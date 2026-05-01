@@ -2979,12 +2979,29 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         </svg>
                       </button>
                       {plannedAtEnabled ? (
-                        <div className="mt-2">
+                        <div className="mt-2 grid grid-cols-[1fr_7rem] gap-2">
                           <DateMonthInput
-                            type="datetime-local"
-                            value={plannedAtLocal}
-                            onChange={(e) => setPlannedAtLocal(e.target.value)}
+                            type="date"
+                            value={plannedAtLocal.split("T")[0] ?? ""}
+                            onChange={(e) => {
+                              const d = e.target.value;
+                              const t = plannedAtLocal.split("T")[1] ?? "";
+                              setPlannedAtLocal(d ? `${d}T${t}` : "");
+                            }}
                             className="h-12 text-sm"
+                          />
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="14:30"
+                            maxLength={5}
+                            value={plannedAtLocal.split("T")[1] ?? ""}
+                            onChange={(e) => {
+                              const t = e.target.value;
+                              const d = plannedAtLocal.split("T")[0] ?? "";
+                              setPlannedAtLocal(`${d}T${t}`);
+                            }}
+                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm tabular-nums outline-none focus:border-slate-400"
                           />
                         </div>
                       ) : null}
