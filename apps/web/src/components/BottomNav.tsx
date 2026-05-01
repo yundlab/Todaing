@@ -35,6 +35,16 @@ function MonthIcon({ className }: { className?: string }) {
   );
 }
 
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M3 10h18M8 2v4M16 2v4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M7 14h3M7 18h3M13 14h3M13 18h3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function GearIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
@@ -76,6 +86,7 @@ export default function BottomNav() {
 
   const todayHref = `/today/${yyyyMmDdLocal(anchor)}`;
   const monthHref = `/month/${yyyyMmLocal(anchor)}`;
+  const calendarHref = `/calendar/${yyyyMmLocal(anchor)}`;
 
   const itemClass = (active: boolean) =>
     cn(
@@ -111,6 +122,14 @@ export default function BottomNav() {
             <>
               <MonthIcon className={iconClass(isActive)} />
               이번 달
+            </>
+          )}
+        </NavLink>
+        <NavLink to={calendarHref} className={({ isActive }) => itemClass(isActive)}>
+          {({ isActive }) => (
+            <>
+              <CalendarIcon className={iconClass(isActive)} />
+              달력
             </>
           )}
         </NavLink>

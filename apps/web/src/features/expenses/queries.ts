@@ -65,7 +65,16 @@ export function useUpdateExpense() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateExpense>[1] }) =>
       updateExpense(id, input),
-    onSuccess: () => invalidateExpenseQueries(qc)
+    onSuccess: (updated) => {
+      qc.setQueryData<ExpenseListResponse>(["expenses"], (old) => {
+        const prev = old?.items ?? [];
+        const items = prev.map((e) => (e.id === updated.id ? updated : e)).sort(
+          (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+        );
+        return { items };
+      });
+      void invalidateExpenseQueries(qc);
+    }
   });
 }
 

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Link } from "react-router-dom";
 import TodaingLogoMark from "./TodaingLogoMark";
 
@@ -14,6 +14,7 @@ export default function Header(props: {
   /** 오늘/월 상세일 때 홈으로 닫기 버튼 표시 */
   showDetailClose?: boolean;
   onDetailClose?: () => void;
+  rightSlot?: ReactNode;
 }) {
   const {
     dayKey,
@@ -24,7 +25,8 @@ export default function Header(props: {
     onPrev,
     onNext,
     showDetailClose,
-    onDetailClose
+    onDetailClose,
+    rightSlot
   } = props;
 
   return (
@@ -115,6 +117,7 @@ export default function Header(props: {
           </div>
 
           <div className="flex items-center justify-end gap-1">
+            {rightSlot}
             {showDetailClose ? (
               <button
                 type="button"

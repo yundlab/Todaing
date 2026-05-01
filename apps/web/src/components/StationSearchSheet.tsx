@@ -23,7 +23,8 @@ export default function StationSearchSheet({ open, query, onQueryChange, onClose
   return (
     <div className="fixed inset-0 z-[60]">
       <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="닫기" />
-      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl border border-slate-200 bg-white shadow-2xl">
+        <div className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-4rem)] overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">{title}</div>
@@ -44,7 +45,7 @@ export default function StationSearchSheet({ open, query, onQueryChange, onClose
           className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
         />
 
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-3 space-y-2 pb-2">
           {searchStations(query).map((s) => (
             <li key={s.name}>
               <button
@@ -59,6 +60,7 @@ export default function StationSearchSheet({ open, query, onQueryChange, onClose
             </li>
           ))}
         </ul>
+        </div>
       </div>
     </div>
   );
