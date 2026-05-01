@@ -1,25 +1,33 @@
-export function encodeScheduleNote(peopleCsv: string, memo: string): string | null {
+export function encodeScheduleNote(
+  peopleCsv: string,
+  memo: string,
+  detail: string = ""
+): string | null {
   const people = peopleCsv
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   const memoT = memo.trim();
-  if (!people.length && !memoT) return null;
+  const detailT = detail.trim();
+  if (!people.length && !memoT && !detailT) return null;
   const lines: string[] = [];
   if (people.length) lines.push(`함께:${people.join(",")}`);
   if (memoT) lines.push(`메모:${memoT}`);
+  if (detailT) lines.push(`세부:${detailT}`);
   return lines.join("\n");
 }
 
 export function parseScheduleNote(raw: string | null | undefined): {
   people: string[];
   memo: string | null;
+  detail: string | null;
 } {
-  if (!raw?.trim()) return { people: [], memo: null };
+  if (!raw?.trim()) return { people: [], memo: null, detail: null };
   const text = raw.trim();
   const lines = text.split("\n");
   const people: string[] = [];
   let memo: string | null = null;
+  let detail: string | null = null;
   let hadStructured = false;
 
   for (const line of lines) {
@@ -31,11 +39,15 @@ export function parseScheduleNote(raw: string | null | undefined): {
       hadStructured = true;
       const m = line.slice("메모:".length).trim();
       memo = m || null;
+    } else if (line.startsWith("세부:")) {
+      hadStructured = true;
+      const d = line.slice("세부:".length).trim();
+      detail = d || null;
     }
   }
 
   if (!hadStructured) {
-    return { people: [], memo: text };
+    return { people: [], memo: text, detail: null };
   }
-  return { people, memo };
+  return { people, memo, detail };
 }
