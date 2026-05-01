@@ -125,3 +125,16 @@ export function buildTransitPayload(
   if (cat === TRANSIT2) return buildTransit2Payload(args.transit2);
   return { ...EMPTY_PAYLOAD };
 }
+
+/** 교통2 작성 폼이 다루는 한 구간(작성 중 임시값). */
+export type Transit2SegmentDraft = {
+  /** YYYY-MM-DD (사용일) */
+  dayKey: string;
+  start: string;
+  end: string;
+  fromText: string;
+  toText: string;
+  /** 🚆🚍🚖✈️ 등 이모지 */
+  mode: string;
+  memoText: string;
+};
