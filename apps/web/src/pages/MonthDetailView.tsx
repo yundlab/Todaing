@@ -8,6 +8,7 @@ import {
   normalizeCategory
 } from "../domain/categoryUi";
 import { formatWon, myShareAmountForMe, settlementDeltaForMe } from "../domain/settlement";
+import SettlementRow from "../components/SettlementRow";
 
 export type MonthDetailViewProps = {
   header: ReactNode;
@@ -206,73 +207,16 @@ export function MonthDetailView({
                             .map(([name, amount]) => {
                               const from = amount >= 0 ? name : me;
                               const to = amount >= 0 ? me : name;
-                              const abs = Math.round(Math.abs(amount));
-                              const sign = amount >= 0 ? "+" : "-";
-                              const settled = isNetSettledForDay(day, name);
-                              const amountTone = amount >= 0 ? "text-emerald-700" : "text-rose-700";
                               return (
-                                <button
+                                <SettlementRow
                                   key={name}
-                                  type="button"
-                                  onClick={() => requestToggleNetSettledForDay(day, name)}
-                                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left ${
-                                    settled ? "border-slate-200 bg-slate-50 text-slate-500" : "border-slate-200 bg-white"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <span
-                                      className={
-                                        from === me
-                                          ? "rounded-xl bg-indigo-600 px-3 py-1 text-xs font-semibold text-white"
-                                          : "rounded-xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
-                                      }
-                                    >
-                                      {from}
-                                    </span>
-                                    <span className="text-slate-400">→</span>
-                                    <span
-                                      className={
-                                        to === me
-                                          ? "rounded-xl bg-indigo-600 px-3 py-1 text-xs font-semibold text-white"
-                                          : "rounded-xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
-                                      }
-                                    >
-                                      {to}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-4">
-                                    <div
-                                      className={`flex items-baseline gap-1 tabular-nums ${
-                                        settled ? "text-slate-400" : amountTone
-                                      }`}
-                                    >
-                                      <span className="text-base font-extrabold tracking-tight">
-                                        {sign}
-                                        {abs.toLocaleString()}
-                                      </span>
-                                      <span className="text-xs font-semibold text-slate-400">원</span>
-                                    </div>
-                                    <div
-                                      className={`flex h-6 w-6 items-center justify-center rounded-full border ${
-                                        settled
-                                          ? "border-indigo-600 bg-indigo-600 text-white"
-                                          : "border-slate-300 bg-white text-transparent"
-                                      }`}
-                                      aria-hidden="true"
-                                    >
-                                      <svg viewBox="0 0 24 24" className="h-3 w-3">
-                                        <path
-                                          d="M20 6L9 17l-5-5"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                      </svg>
-                                    </div>
-                                  </div>
-                                </button>
+                                  from={from}
+                                  to={to}
+                                  me={me}
+                                  amount={amount}
+                                  settled={isNetSettledForDay(day, name)}
+                                  onToggle={() => requestToggleNetSettledForDay(day, name)}
+                                />
                               );
                             })}
                         </div>
