@@ -1,4 +1,4 @@
-## 가계뿌 (PWA 가계부)
+## Todaing : 오늘을 한 장으로
 
 ### 구성
 - **Front**: `apps/web` (React + Vite + Tailwind + vite-plugin-pwa + TanStack Query)
