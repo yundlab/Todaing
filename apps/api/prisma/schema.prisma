@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Expense {
+  id         String   @id @default(cuid())
+  occurredAt DateTime
+  endAt      DateTime?
+  amount     Int
+  category   String
+  merchant   String?
+  detail     String?
+  memo       String?
+
+  paymentType        PaymentType @default(CARD) // 카드/현금/계좌 등
+  paymentOwner       String?
+  paymentMethodLabel String?
+  installment        Boolean     @default(false)
+  installmentMonths  Int?
+
+  scope              ExpenseScope @default(PERSONAL)
+  participants       Json?        // 공동 정산 멤버 목록 (예: ["나","친구1"])
+
+  // 교통 입력용 (선택)
+  transitFrom        String?
+  transitTo          String?
+  transitVia         String?
+  transitLine        String?
+  transitMode        String?
+  transitBusNumber   String?
+  transitSegments    Json?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([occurredAt])
+  @@index([createdAt])
+}
+
+enum ExpenseScope {
+  PERSONAL
+  SHARED
+}
+
+model ScheduleItem {
+  id        String   @id @default(cuid())
+  startAt   DateTime
+  endAt     DateTime
+  title     String
+  note      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startAt])
+  @@index([endAt])
+}
+
+enum PaymentType {
+  CARD
+  CASH
+  ACCOUNT
+  ETC
+}
+
