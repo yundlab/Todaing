@@ -58,6 +58,7 @@ model ScheduleItem {
   endAt     DateTime?
   title     String
   note      String?
+  showOnCalendar Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
