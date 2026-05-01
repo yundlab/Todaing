@@ -10,14 +10,13 @@ import {
 } from "../domain/monthlyBudgetStorage";
 import { parseAmountInput } from "../domain/parseAmountInput";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-
-const AUTH_USER_KEY = "authUser";
+import { AUTH_USER_LS_KEY } from "../lib/auth";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [hasAuth] = useState(() => {
     try {
-      return Boolean(window.localStorage.getItem(AUTH_USER_KEY));
+      return Boolean(window.localStorage.getItem(AUTH_USER_LS_KEY));
     } catch {
       return false;
     }
@@ -69,7 +68,7 @@ export default function SettingsPage() {
 
   const logout = () => {
     try {
-      window.localStorage.removeItem(AUTH_USER_KEY);
+      window.localStorage.removeItem(AUTH_USER_LS_KEY);
     } catch {
       void 0;
     }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { config } from "../lib/config";
 import {
   useCreateExpense,
   useDeleteExpense,
@@ -18,10 +17,13 @@ import {
 } from "../features/schedules/queries";
 import type { Expense } from "../features/expenses/api";
 import type { ScheduleItem } from "../features/schedules/api";
-import { searchStations, type Station } from "../features/transit/stations";
+import { type Station } from "../features/transit/stations";
+import { buildTransitPayload, type TransitLeg } from "../domain/transitPayload";
 import Header from "../components/Header";
-import TodaingLogoMark from "../components/TodaingLogoMark";
+import LoginScreen from "../components/LoginScreen";
+import { AUTH_USER_LS_KEY, type AuthUser } from "../lib/auth";
 import SettlementRecordDialog from "../components/SettlementRecordDialog";
+import StationSearchSheet, { type StationSearchTarget } from "../components/StationSearchSheet";
 import ComposeSheet from "../components/ComposeSheet";
 import ExpenseCard from "../components/ExpenseCard";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
@@ -61,14 +63,6 @@ import {
 } from "../domain/categoryUi";
 import { MonthDetailView } from "../pages/MonthDetailView";
 import { TodayDetailView } from "../pages/TodayDetailView";
-
-declare global {
-  // eslint-disable-next-line no-unused-vars
-  interface Window {
-    __gsiScriptPromise?: Promise<void>;
-    __gsiInitialized?: boolean;
-  }
-}
 
 type Tint = { bg: string; border: string; text: string };
 
@@ -202,147 +196,6 @@ function MoneyIcon({ className }: { className?: string }) {
       <path d="M17 7v10" />
       <circle cx="12" cy="12" r="2.5" />
     </svg>
-  );
-}
-
-type AuthUser = { name: string; email: string; picture?: string };
-
-function safeParseJwtPayload(token: string): any | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
-    const json = atob(b64 + pad);
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-function LoginScreen({
-  onLogin
-}: {
-  // eslint-disable-next-line no-unused-vars
-  onLogin: (_u: AuthUser) => void;
-}) {
-  const [error, setError] = useState<string | null>(null);
-  const onLoginRef = useRef(onLogin);
-
-  useEffect(() => {
-    onLoginRef.current = onLogin;
-  }, [onLogin]);
-
-  useEffect(() => {
-    const clientId = config.googleClientId;
-    if (!clientId) return;
-
-    const ensureScript = () => {
-      if (window.__gsiScriptPromise) return window.__gsiScriptPromise;
-      window.__gsiScriptPromise = new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector<HTMLScriptElement>("script[data-google-identity='1']");
-        if (existing) {
-          // If script tag exists but API not yet ready, wait a tick.
-          const ready = () => {
-            const g = (window as any).google;
-            if (g?.accounts?.id) resolve();
-            else setTimeout(ready, 50);
-          };
-          ready();
-          return;
-        }
-
-        const s = document.createElement("script");
-        s.src = "https://accounts.google.com/gsi/client?hl=ko";
-        s.async = true;
-        s.defer = true;
-        s.dataset.googleIdentity = "1";
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error("GSI script load failed"));
-        document.head.appendChild(s);
-      });
-      return window.__gsiScriptPromise;
-    };
-
-    const init = () => {
-      try {
-        const g = (window as any).google;
-        if (!g?.accounts?.id) return;
-
-        // In dev (React StrictMode) and with unstable effect deps, initialize() can be invoked twice,
-        // which may result in multiple popups / redirects. Guard it globally.
-        const w = window as any;
-        if (!w.__gsiInitialized) {
-          const loginUri = `${config.apiBaseUrl.replace(/\/$/, "")}/auth/google`;
-          g.accounts.id.initialize({
-            client_id: clientId,
-            // Force single-tab flow to avoid "blank tab + sign-in tab" popup quirks.
-            ux_mode: "redirect",
-            login_uri: loginUri,
-            callback: (resp: { credential?: string }) => {
-              const payload = resp?.credential ? safeParseJwtPayload(resp.credential) : null;
-              const u: AuthUser | null = payload?.email
-                ? { name: payload.name ?? payload.email, email: payload.email, picture: payload.picture }
-                : null;
-              if (!u) {
-                setError("로그인 정보를 가져오지 못했어요.");
-                return;
-              }
-              onLoginRef.current(u);
-            }
-          });
-          w.__gsiInitialized = true;
-        }
-
-        const el = document.getElementById("googleSignIn");
-        if (!el) return;
-        el.innerHTML = "";
-        g.accounts.id.renderButton(el, {
-          theme: "filled_black",
-          size: "large",
-          shape: "pill",
-          text: "continue_with",
-          locale: "ko",
-          width: 320
-        });
-      } catch {
-        setError("구글 로그인 초기화에 실패했어요.");
-      }
-    };
-
-    ensureScript()
-      .then(() => init())
-      .catch(() => setError("구글 로그인 스크립트를 불러오지 못했어요."));
-  }, []);
-
-  return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-white px-4">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-6">
-        <div className="flex flex-col items-center text-center">
-          <TodaingLogoMark size="lg" />
-
-          <div className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">Todaing</div>
-          <div className="mt-1 text-sm font-semibold text-slate-500">오늘을 한 장으로</div>
-
-          <div className="mt-10 w-full">
-            {!config.googleClientId ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                `VITE_GOOGLE_CLIENT_ID`가 설정되지 않았어요. `apps/web/.env`에 구글 Client ID를 넣어줘.
-              </div>
-            ) : (
-              <div className="flex justify-center">
-                <div id="googleSignIn" className="cursor-pointer" />
-                <style>{`
-                  #googleSignIn { cursor: pointer !important; }
-                  #googleSignIn iframe { cursor: pointer !important; }
-                `}</style>
-              </div>
-            )}
-            {error ? <div className="mt-3 text-center text-xs font-semibold text-rose-600">{error}</div> : null}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -692,7 +545,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
     try {
-      const raw = window.localStorage.getItem("authUser");
+      const raw = window.localStorage.getItem(AUTH_USER_LS_KEY);
       return raw ? (JSON.parse(raw) as AuthUser) : null;
     } catch {
       return null;
@@ -710,7 +563,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       const u = JSON.parse(json) as AuthUser;
       if (u?.email) {
         try {
-          window.localStorage.setItem("authUser", JSON.stringify(u));
+          window.localStorage.setItem(AUTH_USER_LS_KEY, JSON.stringify(u));
         } catch {
           void 0;
         }
@@ -1045,33 +898,12 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const [exTransitFromText, setExTransitFromText] = useState<string>("");
   const [exTransitToText, setExTransitToText] = useState<string>("");
 
-  type TransitLeg =
-    | {
-        mode: "BUS";
-        start: string;
-        end: string;
-        busNumber: string;
-        from: string;
-        to: string;
-      }
-    | {
-        mode: "SUBWAY";
-        start: string;
-        end: string;
-        from: Station | null;
-        to: Station | null;
-        line: string;
-      };
-
   // 교통1 (대중교통) - 다구간(환승) 지원
   const [transitLegs, setTransitLegs] = useState<TransitLeg[]>(() => [
     { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
   ]);
 
-  const [stationSearchOpen, setStationSearchOpen] = useState<
-    | { legIndex: number; field: "from" | "to" }
-    | null
-  >(null);
+  const [stationSearchOpen, setStationSearchOpen] = useState<StationSearchTarget | null>(null);
   const [stationQuery, setStationQuery] = useState("");
 
   const isTransitCategory = useMemo(() => {
@@ -1216,7 +1048,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       <LoginScreen
         onLogin={(u) => {
           try {
-            window.localStorage.setItem("authUser", JSON.stringify(u));
+            window.localStorage.setItem(AUTH_USER_LS_KEY, JSON.stringify(u));
           } catch {
             void 0;
           }
@@ -1822,63 +1654,16 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
               const occurredAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
               const endAt = dateFromSlotMinutes(composeDayLocal00, endMin).toISOString();
 
-              const transitSegments = isTransit1
-                ? transitLegs.map((l) =>
-                    l.mode === "BUS"
-                      ? {
-                          mode: "BUS",
-                          start: l.start,
-                          end: l.end,
-                          busNumber: l.busNumber || null,
-                          from: l.from || null,
-                          to: l.to || null
-                        }
-                      : {
-                          mode: "SUBWAY",
-                          start: l.start,
-                          end: l.end,
-                          from: l.from?.name ?? null,
-                          to: l.to?.name ?? null,
-                          line: l.line || null
-                        }
-                  )
-                : isTransit2
-                  ? [
-                      {
-                        mode: exTransitMode,
-                        start: entryStartText.trim(),
-                        end: entryEndText.trim(),
-                        from: exTransitFromText.trim() || null,
-                        to: exTransitToText.trim() || null
-                      }
-                    ]
-                  : null;
-
-              const transitFrom = isTransit1
-                ? transitLegs[0]?.mode === "BUS"
-                  ? (transitLegs[0].from || null)
-                  : (transitLegs[0].from?.name ?? null)
-                : isTransit2
-                  ? (exTransitFromText.trim() || null)
-                  : null;
-
-              const lastLeg = isTransit1 ? transitLegs[transitLegs.length - 1] : null;
-              const transitTo = isTransit1
-                ? lastLeg?.mode === "BUS"
-                  ? (lastLeg.to || null)
-                  : (lastLeg?.to?.name ?? null)
-                : isTransit2
-                  ? (exTransitToText.trim() || null)
-                  : null;
-
-              const viaStops = isTransit1
-                ? transitLegs
-                    .slice(0, -1)
-                    .map((l) => (l.mode === "BUS" ? l.to : l.to?.name))
-                    .filter(Boolean)
-                : [];
-
-              const transitVia = viaStops.length ? viaStops.join("|") : null;
+              const transitPayload = buildTransitPayload(entryCategory, {
+                legs: transitLegs,
+                transit2: {
+                  mode: exTransitMode,
+                  start: entryStartText.trim(),
+                  end: entryEndText.trim(),
+                  fromText: exTransitFromText,
+                  toText: exTransitToText
+                }
+              });
 
               const payerName =
                 payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
@@ -1913,13 +1698,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 installmentMonths: null,
                 scope: expenseScope,
                 participants: participantsAll,
-                transitFrom,
-                transitTo,
-                transitVia,
-                transitLine: null,
-                transitMode: isTransit1 ? "🚌/🚈" : isTransit2 ? exTransitMode : null,
-                transitBusNumber: null,
-                transitSegments
+                ...transitPayload
               });
 
               setComposeOpen(false);
@@ -2173,80 +1952,36 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       </ComposeSheet>
 
       {/* Station search sheet */}
-      {stationSearchOpen ? (
-        <div className="fixed inset-0 z-[60]">
-          <button
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setStationSearchOpen(null)}
-            aria-label="닫기"
-          />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">
-                  {stationSearchOpen.field === "from" ? "출발 선택" : "도착 선택"}
-                </div>
-                <div className="mt-1 text-xs text-slate-500">역 이름 검색</div>
-              </div>
-              <button
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
-                onClick={() => setStationSearchOpen(null)}
-              >
-                닫기
-              </button>
-            </div>
+      <StationSearchSheet
+        open={stationSearchOpen}
+        query={stationQuery}
+        onQueryChange={setStationQuery}
+        onClose={() => setStationSearchOpen(null)}
+        onPick={(target, station) => {
+          setTransitLegs((arr) => {
+            const next = [...arr];
+            const leg = next[target.legIndex];
+            if (!leg || leg.mode !== "SUBWAY") return next;
+            const cur = leg as Extract<TransitLeg, { mode: "SUBWAY" }>;
+            const updated =
+              target.field === "from"
+                ? { ...cur, from: station }
+                : { ...cur, to: station };
 
-            <input
-              value={stationQuery}
-              onChange={(e) => setStationQuery(e.target.value)}
-              placeholder="예: 서울역"
-              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-            />
+            // 라인 자동 추천(교집합)
+            if (updated.from && updated.to) {
+              const common = updated.from.lines.find((l) => updated.to?.lines.includes(l));
+              updated.line = common ?? updated.from.lines[0] ?? "";
+            } else if (target.field === "from") {
+              updated.line = station.lines[0] ?? updated.line;
+            }
 
-            <ul className="mt-3 space-y-2">
-              {searchStations(stationQuery).map((s) => (
-                <li key={s.name}>
-                  <button
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left hover:brightness-[0.99]"
-                    onClick={() => {
-                      setTransitLegs((arr) => {
-                        const next = [...arr];
-                        const leg = next[stationSearchOpen.legIndex];
-                        if (!leg || leg.mode !== "SUBWAY") return next;
-                        const cur = leg as Extract<TransitLeg, { mode: "SUBWAY" }>;
-                        const updated =
-                          stationSearchOpen.field === "from"
-                            ? { ...cur, from: s }
-                            : { ...cur, to: s };
-
-                        // 라인 자동 추천(교집합)
-                        if (updated.from && updated.to) {
-                          const common = updated.from.lines.find((l) =>
-                            updated.to?.lines.includes(l)
-                          );
-                          updated.line = common ?? updated.from.lines[0] ?? "";
-                        } else if (stationSearchOpen.field === "from") {
-                          updated.line = s.lines[0] ?? updated.line;
-                        }
-
-                        next[stationSearchOpen.legIndex] = updated;
-                        return next;
-                      });
-
-                      setStationSearchOpen(null);
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-slate-900">{s.name}</div>
-                      <div className="text-xs text-slate-600">{s.lines.join(" · ")}</div>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      ) : null}
+            next[target.legIndex] = updated;
+            return next;
+          });
+          setStationSearchOpen(null);
+        }}
+      />
 
       {/* Expense detail sheet */}
       {expenseDetailOpen ? (
@@ -2763,65 +2498,16 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 const occurredAt = dateFromSlotMinutes(dayLocal00, mm).toISOString();
                 const endAt = dateFromSlotMinutes(dayLocal00, em).toISOString();
                 const cat = normalizeCategory(editCategory) || expenseEditOpen.category;
-                const isT1 = cat === "교통1";
-                const isT2 = cat === "교통2";
-                const transitSegments = isT1
-                  ? transitLegs.map((l) =>
-                      (l as any).mode === "BUS"
-                        ? {
-                            mode: "BUS",
-                            start: (l as any).start,
-                            end: (l as any).end,
-                            busNumber: (l as any).busNumber || null,
-                            from: (l as any).from || null,
-                            to: (l as any).to || null
-                          }
-                        : {
-                            mode: "SUBWAY",
-                            start: (l as any).start,
-                            end: (l as any).end,
-                            from: (l as any).from?.name ?? null,
-                            to: (l as any).to?.name ?? null,
-                            line: (l as any).line || null
-                          }
-                    )
-                  : isT2
-                    ? [
-                        {
-                          mode: exTransitMode,
-                          start: editTimeText.trim(),
-                          end: editTimeText.trim(),
-                          from: exTransitFromText.trim() || null,
-                          to: exTransitToText.trim() || null
-                        }
-                      ]
-                    : null;
-
-                const transitFrom = isT1
-                  ? (transitLegs[0] as any)?.mode === "BUS"
-                    ? ((transitLegs[0] as any).from || null)
-                    : ((transitLegs[0] as any).from?.name ?? null)
-                  : isT2
-                    ? (exTransitFromText.trim() || null)
-                    : null;
-
-                const lastLeg = isT1 ? (transitLegs[transitLegs.length - 1] as any) : null;
-                const transitTo = isT1
-                  ? lastLeg?.mode === "BUS"
-                    ? (lastLeg.to || null)
-                    : (lastLeg?.to?.name ?? null)
-                  : isT2
-                    ? (exTransitToText.trim() || null)
-                    : null;
-
-                const viaStops = isT1
-                  ? (transitLegs as any[])
-                      .slice(0, -1)
-                      .map((l) => (l.mode === "BUS" ? l.to : l.to?.name))
-                      .filter(Boolean)
-                  : [];
-
-                const transitVia = viaStops.length ? viaStops.join("|") : null;
+                const transitPayload = buildTransitPayload(cat, {
+                  legs: transitLegs,
+                  transit2: {
+                    mode: exTransitMode,
+                    start: editTimeText.trim(),
+                    end: editTimeText.trim(),
+                    fromText: exTransitFromText,
+                    toText: exTransitToText
+                  }
+                });
                 await updateExpense.mutateAsync({
                   id: expenseEditOpen.id,
                   input: {
@@ -2841,13 +2527,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                     participants: participantsAll,
                     merchant: editMerchant.trim() ? editMerchant.trim() : null,
                     detail: editDetail.trim() ? editDetail.trim() : null,
-                    transitFrom,
-                    transitTo,
-                    transitVia,
-                    transitLine: null,
-                    transitMode: isT1 ? "🚌/🚈" : isT2 ? exTransitMode : null,
-                    transitBusNumber: null,
-                    transitSegments
+                    ...transitPayload
                   }
                 });
                 setExpenseEditOpen(null);
