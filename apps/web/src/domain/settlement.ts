@@ -20,6 +20,14 @@ export function participantsCount(e: Expense): number | null {
   return n >= 2 ? n : null;
 }
 
+/** 카드·상세에 표시할 때만 사용: 함께한 사람 목록에서 `me`(기본 "나")는 빼고 보여줌 */
+export function participantsDisplayWithoutMe(participants: unknown, me = "나"): string {
+  if (!Array.isArray(participants)) return "";
+  const names = participants.map((x) => String(x).trim()).filter(Boolean);
+  const rest = names.filter((n) => n !== me);
+  return rest.length ? rest.join(", ") : names.join(", ");
+}
+
 export function myShareAmountForMe(e: Expense, me: string) {
   if (e.amount <= 0) return 0;
   if (e.scope !== "SHARED") return e.amount;

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Expense } from "../features/expenses/api";
+import type { ScheduleItem } from "../features/schedules/api";
 import { yyyyMmDdLocal, yyyyMmLocal } from "../domain/date";
 import {
   CATEGORY_GROUPS,
@@ -8,11 +9,20 @@ import {
   normalizeCategory
 } from "../domain/categoryUi";
 import { formatWon, myShareAmountForMe, settlementDeltaForMe } from "../domain/settlement";
+import {
+  expenseCashflowAllocations,
+  expenseCashflowAllocationsForMe,
+  sumExpensesForMonth,
+  type AggregateMode
+} from "../domain/installment";
+import SettlementRow from "../components/SettlementRow";
 
 export type MonthDetailViewProps = {
   header: ReactNode;
   settlementDialog: ReactNode;
   expenses: Expense[] | undefined;
+  schedules: ScheduleItem[];
+  usageTransit2ByDay?: Map<string, number>;
   monthKey: string;
   monthlyBudgetWon: number;
   me: string;
@@ -20,39 +30,77 @@ export type MonthDetailViewProps = {
   isNetSettledForDay: (day: string, name: string) => boolean;
   // eslint-disable-next-line no-unused-vars
   requestToggleNetSettledForDay: (day: string, name: string) => void;
+  settlementAllByDay?: Map<string, Map<string, number>>;
+  aggregateMode?: AggregateMode;
 };
 
 export function MonthDetailView({
   header,
   settlementDialog,
   expenses,
+  schedules,
+  usageTransit2ByDay = new Map<string, number>(),
   monthKey,
   monthlyBudgetWon,
   me,
   isNetSettledForDay,
-  requestToggleNetSettledForDay
+  requestToggleNetSettledForDay,
+  settlementAllByDay = new Map<string, Map<string, number>>(),
+  aggregateMode = "usage"
 }: MonthDetailViewProps) {
   const items = expenses ?? [];
   const monthItems = items.filter((e) => yyyyMmLocal(new Date(e.occurredAt)) === monthKey);
-  const myMonthTotal = monthItems.reduce((a, e) => a + myShareAmountForMe(e, me), 0);
+  const myMonthTotal = sumExpensesForMonth(aggregateMode, items, monthKey, { onlyMine: true, me });
   const monthPctRaw = monthlyBudgetWon > 0 ? myMonthTotal / monthlyBudgetWon : 0;
   const monthPctDisplay = Math.max(0, Math.round(monthPctRaw * 100));
   const monthPctBar = Math.min(100, monthPctDisplay);
   const monthOver = monthPctRaw > 1;
 
   const byDay = new Map<string, { day: string; count: number; amount: number }>();
-  for (const e of monthItems) {
-    const day = yyyyMmDdLocal(new Date(e.occurredAt));
-    const prev = byDay.get(day) ?? { day, count: 0, amount: 0 };
-    byDay.set(day, { day, count: prev.count + 1, amount: prev.amount + myShareAmountForMe(e, me) });
+  if (aggregateMode === "cashflow") {
+    for (const e of items) {
+      const allocs = expenseCashflowAllocationsForMe(e, me);
+      if (!allocs.length) continue;
+      const occurredMonth = yyyyMmLocal(new Date(e.occurredAt));
+      const occurredDay = yyyyMmDdLocal(new Date(e.occurredAt));
+      for (const a of allocs) {
+        if (a.monthKey !== monthKey) continue;
+        const day = a.monthKey === occurredMonth ? occurredDay : `${a.monthKey}-01`;
+        const prev = byDay.get(day) ?? { day, count: 0, amount: 0 };
+        byDay.set(day, {
+          day,
+          count: prev.count + (a.monthKey === occurredMonth ? 1 : 1),
+          amount: prev.amount + a.amount
+        });
+      }
+    }
+  } else {
+    for (const e of monthItems) {
+      const day = yyyyMmDdLocal(new Date(e.occurredAt));
+      const prev = byDay.get(day) ?? { day, count: 0, amount: 0 };
+      byDay.set(day, { day, count: prev.count + 1, amount: prev.amount + myShareAmountForMe(e, me) });
+    }
   }
   const dayRows = Array.from(byDay.values()).sort((a, b) => (a.day < b.day ? -1 : 1));
 
   const byCategory = new Map<string, { category: string; count: number; amount: number }>();
-  for (const e of monthItems) {
-    const cat = normalizeCategory(e.category || "기타");
-    const prev = byCategory.get(cat) ?? { category: cat, count: 0, amount: 0 };
-    byCategory.set(cat, { category: cat, count: prev.count + 1, amount: prev.amount + (Number(e.amount) || 0) });
+  if (aggregateMode === "cashflow") {
+    for (const e of items) {
+      const allocs = expenseCashflowAllocations(e);
+      if (!allocs.length) continue;
+      let monthAmount = 0;
+      for (const a of allocs) if (a.monthKey === monthKey) monthAmount += a.amount;
+      if (monthAmount <= 0) continue;
+      const cat = normalizeCategory(e.category || "기타");
+      const prev = byCategory.get(cat) ?? { category: cat, count: 0, amount: 0 };
+      byCategory.set(cat, { category: cat, count: prev.count + 1, amount: prev.amount + monthAmount });
+    }
+  } else {
+    for (const e of monthItems) {
+      const cat = normalizeCategory(e.category || "기타");
+      const prev = byCategory.get(cat) ?? { category: cat, count: 0, amount: 0 };
+      byCategory.set(cat, { category: cat, count: prev.count + 1, amount: prev.amount + (Number(e.amount) || 0) });
+    }
   }
   const categoryStatByKey = new Map<string, { category: string; count: number; amount: number }>(
     Array.from(byCategory.values()).map((r) => [normalizeCategory(r.category), r])
@@ -76,8 +124,20 @@ export function MonthDetailView({
     if (perPerson.size) settlementByDay.set(row.day, perPerson);
   }
 
+  const monthSchedules = (schedules ?? []).filter((s) => yyyyMmLocal(new Date(s.startAt)) === monthKey);
+  const schedulesByDay = new Map<string, number>();
+  for (const s of monthSchedules) {
+    const d = yyyyMmDdLocal(new Date(s.startAt));
+    schedulesByDay.set(d, (schedulesByDay.get(d) ?? 0) + 1);
+  }
+  for (const [day, count] of usageTransit2ByDay.entries()) {
+    if (yyyyMmLocal(new Date(`${day}T00:00:00`)) !== monthKey) continue;
+    schedulesByDay.set(day, (schedulesByDay.get(day) ?? 0) + (Number(count) || 0));
+  }
+  const scheduleDayRows = Array.from(schedulesByDay.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+
   return (
-    <div className="min-h-dvh bg-white">
+    <div className="min-h-dvh bg-white pb-[calc(4.25rem+env(safe-area-inset-bottom))]">
       {header}
       {settlementDialog}
       <main>
@@ -85,9 +145,11 @@ export function MonthDetailView({
           <section className="overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
             <div className="h-2 w-full bg-gradient-to-r from-teal-400 via-sky-400 to-indigo-400" />
             <div className="px-5 pb-5 pt-7">
-              <div className="flex items-baseline justify-between gap-3">
-                <div className="text-xs font-semibold text-slate-500">이번 달 지출</div>
-                <div className="text-xs font-semibold text-slate-500">{monthItems.length}건</div>
+                <div className="flex items-baseline justify-between gap-3">
+                <div className="text-xs font-semibold text-slate-500">
+                  {aggregateMode === "cashflow" ? "이번 달 실출금" : "이번 달 지출"}
+                </div>
+                  <div className="text-xs font-semibold text-slate-500">{monthItems.length}건</div>
               </div>
               <div className="mt-1 flex items-baseline gap-1 tabular-nums text-slate-900">
                 <span className="text-3xl font-extrabold tracking-tight">
@@ -127,9 +189,9 @@ export function MonthDetailView({
                 </div>
               </div>
 
-              <div className="mt-5 space-y-1 text-xs font-semibold tabular-nums text-slate-700">
-                {dayRows.length ? (
-                  dayRows.map((r) => (
+              {dayRows.length ? (
+                <div className="mt-8 space-y-1 text-xs font-semibold tabular-nums text-slate-700">
+                  {dayRows.map((r) => (
                     <div key={r.day} className="flex items-center gap-3 text-slate-700">
                       <div className="shrink-0 text-slate-600">{r.day}</div>
                       <div className="h-px flex-1 bg-slate-200" />
@@ -138,15 +200,17 @@ export function MonthDetailView({
                         <span className="tabular-nums">{formatWon(Math.round(r.amount))}</span>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="text-slate-500">이번달 지출이 없어요.</div>
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
+                  아직 이번달 지출이 없어요.
+                </div>
+              )}
 
-              <div className="mt-6 space-y-4 text-xs font-semibold tabular-nums text-slate-800">
-                {monthItems.length ? (
-                  CATEGORY_GROUPS.map((g) => {
+              {monthItems.length ? (
+                <div className="mt-6 space-y-4 text-xs font-semibold tabular-nums text-slate-800">
+                  {CATEGORY_GROUPS.map((g) => {
                     const rows = g.items
                       .map((c) => categoryStatByKey.get(normalizeCategory(c)) ?? null)
                       .filter(Boolean) as Array<{ category: string; count: number; amount: number }>;
@@ -184,8 +248,32 @@ export function MonthDetailView({
                         </div>
                       </div>
                     );
-                  })
-                ) : null}
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="mt-4 overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
+            <div className="p-5">
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-900">이번 달 일정 요약</div>
+                <div className="text-xs font-semibold text-slate-500">{monthSchedules.length}건</div>
+              </div>
+              <div className="mt-3 space-y-1 text-xs font-semibold tabular-nums text-slate-700">
+                {scheduleDayRows.length ? (
+                  scheduleDayRows.map(([day, count]) => (
+                    <div key={day} className="flex items-center gap-3">
+                      <div className="shrink-0 text-slate-600">{day}</div>
+                      <div className="h-px flex-1 bg-slate-200" />
+                      <div className="shrink-0 text-slate-600">{count}건</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
+                    이번달 일정이 없어요.
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -206,80 +294,65 @@ export function MonthDetailView({
                             .map(([name, amount]) => {
                               const from = amount >= 0 ? name : me;
                               const to = amount >= 0 ? me : name;
-                              const abs = Math.round(Math.abs(amount));
-                              const sign = amount >= 0 ? "+" : "-";
-                              const settled = isNetSettledForDay(day, name);
-                              const amountTone = amount >= 0 ? "text-emerald-700" : "text-rose-700";
                               return (
-                                <button
+                                <SettlementRow
                                   key={name}
-                                  type="button"
-                                  onClick={() => requestToggleNetSettledForDay(day, name)}
-                                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left ${
-                                    settled ? "border-slate-200 bg-slate-50 text-slate-500" : "border-slate-200 bg-white"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <span
-                                      className={
-                                        from === me
-                                          ? "rounded-xl bg-indigo-600 px-3 py-1 text-xs font-semibold text-white"
-                                          : "rounded-xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
-                                      }
-                                    >
-                                      {from}
-                                    </span>
-                                    <span className="text-slate-400">→</span>
-                                    <span
-                                      className={
-                                        to === me
-                                          ? "rounded-xl bg-indigo-600 px-3 py-1 text-xs font-semibold text-white"
-                                          : "rounded-xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
-                                      }
-                                    >
-                                      {to}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-4">
-                                    <div
-                                      className={`flex items-baseline gap-1 tabular-nums ${
-                                        settled ? "text-slate-400" : amountTone
-                                      }`}
-                                    >
-                                      <span className="text-base font-extrabold tracking-tight">
-                                        {sign}
-                                        {abs.toLocaleString()}
-                                      </span>
-                                      <span className="text-xs font-semibold text-slate-400">원</span>
-                                    </div>
-                                    <div
-                                      className={`flex h-6 w-6 items-center justify-center rounded-full border ${
-                                        settled
-                                          ? "border-indigo-600 bg-indigo-600 text-white"
-                                          : "border-slate-300 bg-white text-transparent"
-                                      }`}
-                                      aria-hidden="true"
-                                    >
-                                      <svg viewBox="0 0 24 24" className="h-3 w-3">
-                                        <path
-                                          d="M20 6L9 17l-5-5"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                      </svg>
-                                    </div>
-                                  </div>
-                                </button>
+                                  from={from}
+                                  to={to}
+                                  me={me}
+                                  amount={amount}
+                                  settled={isNetSettledForDay(day, name)}
+                                  onToggle={() => requestToggleNetSettledForDay(day, name)}
+                                />
                               );
                             })}
                         </div>
                       </div>
                     ))
                 ) : (
-                  <div className="text-sm font-semibold text-slate-500">이번달 정산할 내역이 없어요.</div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
+                    이번달 정산할 내역이 없어요.
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-4 overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
+            <div className="p-5">
+              <div className="text-sm font-semibold text-slate-900">전체 정산 현황</div>
+              <div className="mt-4 space-y-3 text-sm">
+                {settlementAllByDay.size ? (
+                  Array.from(settlementAllByDay.entries())
+                    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+                    .map(([day, perPerson]) => (
+                      <div key={day}>
+                        <div className="text-xs font-semibold text-slate-600">{day}</div>
+                        <div className="mt-2 space-y-2">
+                          {Array.from(perPerson.entries())
+                            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                            .map(([name, amount]) => {
+                              const from = amount >= 0 ? name : me;
+                              const to = amount >= 0 ? me : name;
+                              return (
+                                <SettlementRow
+                                  key={`${day}:${name}`}
+                                  from={from}
+                                  to={to}
+                                  me={me}
+                                  amount={amount}
+                                  settled={isNetSettledForDay(day, name)}
+                                  onToggle={() => requestToggleNetSettledForDay(day, name)}
+                                />
+                              );
+                            })}
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
+                    정산할 내역이 없어요.
+                  </div>
                 )}
               </div>
             </div>

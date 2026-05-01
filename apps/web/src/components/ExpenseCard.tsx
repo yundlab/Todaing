@@ -27,13 +27,15 @@ export default function ExpenseCard(props: {
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 gap-3">
           {props.leftIcon}
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="truncate text-base font-semibold text-slate-900">{props.title}</div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="min-w-0 break-words text-base font-semibold leading-snug text-slate-900">
+                {props.title}
+              </div>
               {props.chips}
             </div>
             {props.meta ? (
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-400">
                 {props.meta}
               </div>
             ) : null}
