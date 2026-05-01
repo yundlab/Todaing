@@ -1026,6 +1026,10 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     setExInstallmentMonths,
     exInstallmentNoInterest,
     setExInstallmentNoInterest,
+    plannedAtEnabled,
+    setPlannedAtEnabled,
+    plannedAtLocal,
+    setPlannedAtLocal,
     reset: resetComposeForm
   } = useExpenseComposeForm();
 
@@ -1123,6 +1127,28 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     setSharedNamesText(
       Array.isArray(e.participants) ? (e.participants as unknown[]).map(String).join(", ") : ""
     );
+
+    // plannedAt 복원: occurredAt과 다를 때만 토글 ON, datetime-local 입력값 채움
+    if (e.plannedAt) {
+      const planned = new Date(e.plannedAt);
+      const occurred = new Date(e.occurredAt);
+      const sameMoment = planned.getTime() === occurred.getTime();
+      if (!sameMoment && !Number.isNaN(planned.getTime())) {
+        setPlannedAtEnabled(true);
+        const yyyy = planned.getFullYear();
+        const mm = pad2(planned.getMonth() + 1);
+        const dd = pad2(planned.getDate());
+        const hh = pad2(planned.getHours());
+        const mi = pad2(planned.getMinutes());
+        setPlannedAtLocal(`${yyyy}-${mm}-${dd}T${hh}:${mi}`);
+      } else {
+        setPlannedAtEnabled(false);
+        setPlannedAtLocal("");
+      }
+    } else {
+      setPlannedAtEnabled(false);
+      setPlannedAtLocal("");
+    }
 
     if (normalizeCategory(e.category) === "교통1") {
       const seg = e.transitSegments;
@@ -1610,7 +1636,17 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     convertFromScheduleId: string | null;
   };
 
-  async function submitEditSchedule(args: ComposeSubmitArgs) {
+  /** datetime-local 입력값을 ISO 문자열로 변환. 토글 OFF거나 빈 값이면 null. */
+  function buildPlannedAtIso(): string | null {
+    if (!plannedAtEnabled) return null;
+    const trimmed = plannedAtLocal.trim();
+    if (!trimmed) return null;
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+
+    async function submitEditSchedule(args: ComposeSubmitArgs) {
     if (!composeEditScheduleId) return;
     const { category, title, startMin } = args;
     const eMin = entryEndText.trim() ? parseFlexibleTimeToMinutes(entryEndText) : null;
@@ -1743,6 +1779,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
           exInstallmentMonths,
           exInstallmentNoInterest
         ),
+        plannedAt: buildPlannedAtIso(),
         ...transitPayload
       }
     });
@@ -1990,6 +2027,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       ),
       scope: expenseScope,
       participants: participantsAll,
+      plannedAt: buildPlannedAtIso(),
       ...transitPayload
     });
 
@@ -2949,6 +2987,34 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                           noInterest={exInstallmentNoInterest}
                           setNoInterest={setExInstallmentNoInterest}
                         />
+                      ) : null}
+                    </div>
+
+                    <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={plannedAtEnabled}
+                          onChange={(e) => setPlannedAtEnabled(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                        />
+                        <span className="text-sm font-semibold text-slate-800">
+                          결제일과 다른 날 사용
+                        </span>
+                      </label>
+                      {plannedAtEnabled ? (
+                        <label className="mt-3 block">
+                          <div className="mb-1 text-xs text-slate-400">사용 예정/실제일</div>
+                          <DateMonthInput
+                            type="datetime-local"
+                            value={plannedAtLocal}
+                            onChange={(e) => setPlannedAtLocal(e.target.value)}
+                            className="text-sm"
+                          />
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            캘린더의 사용일 칸에 회색으로 참고 표시되고, 합계엔 결제일에만 잡혀요.
+                          </div>
+                        </label>
                       ) : null}
                     </div>
 

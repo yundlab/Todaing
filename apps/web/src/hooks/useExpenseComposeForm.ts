@@ -31,6 +31,11 @@ export function useExpenseComposeForm() {
   const [exInstallmentMonths, setExInstallmentMonths] = useState(2);
   const [exInstallmentNoInterest, setExInstallmentNoInterest] = useState(false);
 
+  /** 결제일과 다른 사용 예정/실제일 토글 */
+  const [plannedAtEnabled, setPlannedAtEnabled] = useState(false);
+  /** datetime-local 입력값 (예: "2026-05-12T19:30"). 빈 문자열이면 미입력. */
+  const [plannedAtLocal, setPlannedAtLocal] = useState("");
+
   /** 작성 완료/취소 후 폼 리셋 */
   function reset() {
     setEntryStartText(DEFAULT_START);
@@ -50,6 +55,8 @@ export function useExpenseComposeForm() {
     setExInstallment(false);
     setExInstallmentMonths(2);
     setExInstallmentNoInterest(false);
+    setPlannedAtEnabled(false);
+    setPlannedAtLocal("");
   }
 
   return {
@@ -90,6 +97,11 @@ export function useExpenseComposeForm() {
     setExInstallmentMonths,
     exInstallmentNoInterest,
     setExInstallmentNoInterest,
+
+    plannedAtEnabled,
+    setPlannedAtEnabled,
+    plannedAtLocal,
+    setPlannedAtLocal,
 
     reset
   };
