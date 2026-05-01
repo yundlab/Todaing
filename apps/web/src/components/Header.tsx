@@ -7,7 +7,7 @@ export default function Header(props: {
   monthKey: string;
   monthMode: boolean;
   calendarInputRef: RefObject<HTMLInputElement>;
-  // eslint-disable-next-line no-unused-vars
+   
   onPick: (_next: Date) => void;
   onPrev: () => void;
   onNext: () => void;
@@ -70,7 +70,6 @@ export default function Header(props: {
                   const el = calendarInputRef.current;
                   if (!el) return;
                   // Safari/모바일에서 opacity=0 input 클릭이 막히는 케이스가 있어 showPicker 우선 사용
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const anyEl = el as any;
                   if (typeof anyEl.showPicker === "function") anyEl.showPicker();
                   else el.click();

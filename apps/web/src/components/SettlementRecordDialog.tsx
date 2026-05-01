@@ -17,11 +17,11 @@ export default function SettlementRecordDialog(props: {
   paidAtLocal: string;
   method: string;
   note: string;
-  // eslint-disable-next-line no-unused-vars
+   
   onPaidAtLocalChange: (_v: string) => void;
-  // eslint-disable-next-line no-unused-vars
+   
   onMethodChange: (_v: string) => void;
-  // eslint-disable-next-line no-unused-vars
+   
   onNoteChange: (_v: string) => void;
   onCancel: () => void;
   onUnset?: () => void;

@@ -82,7 +82,7 @@ function payloadToAuthUser(payload: Record<string, unknown> | null): AuthUser | 
 export default function LoginScreen({
   onLogin
 }: {
-  // eslint-disable-next-line no-unused-vars
+   
   onLogin: (_u: AuthUser) => void;
 }) {
   const [error, setError] = useState<string | null>(null);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import type { CSSProperties } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   useCreateExpense,
@@ -201,11 +201,11 @@ function installmentPayload(
 
 function CardInstallmentFields(props: {
   installment: boolean;
-  setInstallment: (v: boolean) => void;
+  setInstallment: (_v: boolean) => void;
   months: number;
-  setMonths: (n: number) => void;
+  setMonths: (_n: number) => void;
   noInterest: boolean;
-  setNoInterest: (v: boolean) => void;
+  setNoInterest: (_v: boolean) => void;
 }) {
   return (
     <div className="mt-2">
@@ -400,9 +400,9 @@ function Transit1Fields({
       >
     >
   >;
-  // eslint-disable-next-line no-unused-vars
+   
   openStationSearch: (_legIndex: number, _field: "from" | "to") => void;
-  // eslint-disable-next-line no-unused-vars
+   
   requestConfirm: (_message: string, _action: () => void | Promise<void>) => void;
 }) {
   return (
@@ -614,13 +614,13 @@ function Transit2Fields({
   setToText
 }: {
   mode: string;
-  // eslint-disable-next-line no-unused-vars
+   
   setMode: (_m: string) => void;
   fromText: string;
-  // eslint-disable-next-line no-unused-vars
+   
   setFromText: (_v: string) => void;
   toText: string;
-  // eslint-disable-next-line no-unused-vars
+   
   setToText: (_v: string) => void;
 }) {
   return (
@@ -877,19 +877,6 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       return;
     }
     toggleNetSettledForDay(day, other);
-  };
-
-  const settlementOthersForExpense = (e: Expense, me: string) => {
-    const transfers = settlementTransfersForMe(e, me);
-    if (!transfers.length) return [];
-    return Array.from(
-      new Set(
-        transfers
-          .flatMap((t) => [t.from, t.to])
-          .map((x) => String(x).trim())
-          .filter((x) => x && x !== me)
-      )
-    );
   };
 
   const isExpenseNetSettledForDay = (day: string, e: Expense, me: string) => {
