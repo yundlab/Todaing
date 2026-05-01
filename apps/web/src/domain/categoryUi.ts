@@ -1,5 +1,6 @@
 const CATEGORY_ALIAS: Record<string, string> = {
-  OTT: "구독"
+  OTT: "구독",
+  식비: "식사"
 };
 
 export function normalizeCategory(raw: string) {
@@ -12,7 +13,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   교통2: "🚆",
   통신: "📱",
   보험: "🛡️",
-  식비: "🍚",
+  식사: "🍚",
   간식: "🥤",
   담배: "🪄",
   구독: "💸",
@@ -35,7 +36,7 @@ const EMOJI_TO_CATEGORY = Object.fromEntries(
 
 export const CATEGORY_GROUPS: Array<{ label: string; items: string[] }> = [
   { label: "필수 고정비", items: ["교통1", "교통2", "통신", "보험"] },
-  { label: "식음료", items: ["식비", "간식"] },
+  { label: "식음료", items: ["식사", "간식"] },
   { label: "선택 고정비", items: ["담배", "구독"] },
   { label: "생활", items: ["생활", "병원", "선물"] },
   { label: "덕질", items: ["god", "PPTNZ", "안재현", "덕질"] },

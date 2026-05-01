@@ -3,18 +3,20 @@ import { http } from "../../lib/http";
 export type ScheduleItem = {
   id: string;
   startAt: string;
-  endAt: string;
+  endAt: string | null;
   title: string;
   note: string | null;
+  showOnCalendar: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
 export type ScheduleCreateInput = {
   startAt: string;
-  endAt: string;
+  endAt?: string | null;
   title: string;
   note?: string | null;
+  showOnCalendar?: boolean;
 };
 
 export type ScheduleListResponse = {
@@ -23,6 +25,11 @@ export type ScheduleListResponse = {
 
 export function listSchedules(day: string): Promise<ScheduleListResponse> {
   return http(`/api/schedules?day=${encodeURIComponent(day)}`);
+}
+
+export function listMonthSchedules(month: string, opts?: { onlyCalendar?: boolean }): Promise<ScheduleListResponse> {
+  const only = opts?.onlyCalendar ? "&onlyCalendar=1" : "";
+  return http(`/api/schedules/month?month=${encodeURIComponent(month)}${only}`);
 }
 
 export function createSchedule(input: ScheduleCreateInput): Promise<ScheduleItem> {

@@ -14,6 +14,10 @@ export type Expense = {
   paymentMethodLabel: string | null;
   installment: boolean;
   installmentMonths: number | null;
+  /** API/구데이터에 없을 수 있음 */
+  installmentNoInterest?: boolean;
+  /** 결제일(occurredAt)과 다른 사용 예정/실제일. null이면 결제일과 동일. */
+  plannedAt: string | null;
   scope: "PERSONAL" | "SHARED";
   participants: unknown | null;
   transitFrom: string | null;
@@ -40,6 +44,8 @@ export type ExpenseCreateInput = {
   paymentMethodLabel?: string | null;
   installment?: boolean;
   installmentMonths?: number | null;
+  installmentNoInterest?: boolean;
+  plannedAt?: string | null;
   scope?: "PERSONAL" | "SHARED";
   participants?: unknown | null;
   transitFrom?: string | null;

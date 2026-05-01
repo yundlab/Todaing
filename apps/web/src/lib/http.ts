@@ -11,13 +11,17 @@ export class HttpError extends Error {
 }
 
 export async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timeoutMs = 15_000;
+  const t = window.setTimeout(() => controller.abort(), timeoutMs);
   const res = await fetch(`${config.apiBaseUrl}${path}`, {
     ...init,
+    signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
     }
-  });
+  }).finally(() => window.clearTimeout(t));
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

@@ -8,16 +8,17 @@ import {
   readLegacyMonthlyBudgetWonFromStorage,
   serializeMonthlyBudgetByYm
 } from "../domain/monthlyBudgetStorage";
+import BottomNav from "../components/BottomNav";
+import DateMonthInput from "../components/DateMonthInput";
 import { parseAmountInput } from "../domain/parseAmountInput";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-
-const AUTH_USER_KEY = "authUser";
+import { AUTH_USER_LS_KEY } from "../lib/auth";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [hasAuth] = useState(() => {
     try {
-      return Boolean(window.localStorage.getItem(AUTH_USER_KEY));
+      return Boolean(window.localStorage.getItem(AUTH_USER_LS_KEY));
     } catch {
       return false;
     }
@@ -69,7 +70,7 @@ export default function SettingsPage() {
 
   const logout = () => {
     try {
-      window.localStorage.removeItem(AUTH_USER_KEY);
+      window.localStorage.removeItem(AUTH_USER_LS_KEY);
     } catch {
       void 0;
     }
@@ -117,14 +118,14 @@ export default function SettingsPage() {
           <div className="p-5 space-y-5">
             <div>
               <div className="mb-1 text-xs font-semibold text-slate-500">수정할 달 (YYYY-MM)</div>
-              <input
+              <DateMonthInput
                 type="month"
                 value={editMonthYm}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v) setEditMonthYm(v);
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-mono text-base font-semibold tabular-nums text-slate-900 outline-none focus:border-indigo-400"
+                className="font-mono text-base font-semibold tabular-nums text-slate-900 focus:border-indigo-400"
               />
             </div>
             <label className="block">
@@ -191,6 +192,8 @@ export default function SettingsPage() {
           </div>
         </section>
       </main>
+
+      <BottomNav />
     </div>
   );
 }

@@ -19,6 +19,9 @@ const expenseCreateSchema = z.object({
   paymentMethodLabel: z.string().max(60).nullable().optional(),
   installment: z.boolean().optional(),
   installmentMonths: z.number().int().min(2).max(36).nullable().optional(),
+  installmentNoInterest: z.boolean().optional(),
+  // 결제일(occurredAt)과 다른 사용 예정/실제일. null이면 결제일과 동일.
+  plannedAt: z.string().datetime().nullable().optional(),
   scope: z.enum(["PERSONAL", "SHARED"]).optional(),
   participants: z.unknown().nullable().optional(),
   transitFrom: z.string().max(40).nullable().optional(),
@@ -55,9 +58,10 @@ function sendZodError(
 }
 
 expensesRouter.get("/", async (_req, res) => {
+  // 클라이언트가 월·일 합계·타임라인을 목록으로 계산하므로, 상한만 두고 충분히 넓게 반환합니다.
   const items = await prisma.expense.findMany({
     orderBy: { occurredAt: "desc" },
-    take: 50
+    take: 5000
   });
   res.json({ items });
 });
@@ -69,7 +73,8 @@ expensesRouter.get("/summary", async (req, res) => {
     return;
   }
 
-  const start = new Date(`${day}T00:00:00.000`);
+  // Interpret day boundary in KST to match client dayKey (YYYY-MM-DD local)
+  const start = new Date(`${day}T00:00:00.000+09:00`);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
@@ -99,7 +104,8 @@ expensesRouter.get("/monthly-summary", async (req, res) => {
     return;
   }
 
-  const start = new Date(`${month}-01T00:00:00.000`);
+  // Interpret month boundary in KST to match client monthKey (YYYY-MM local)
+  const start = new Date(`${month}-01T00:00:00.000+09:00`);
   if (Number.isNaN(start.getTime())) {
     res.status(400).send("invalid month");
     return;
@@ -150,6 +156,8 @@ function buildCreateData(data: ExpenseCreate) {
     paymentMethodLabel: data.paymentMethodLabel ?? null,
     installment: data.installment ?? false,
     installmentMonths: data.installmentMonths ?? null,
+    installmentNoInterest: data.installmentNoInterest ?? false,
+    plannedAt: data.plannedAt ? new Date(data.plannedAt) : null,
     scope: data.scope ?? "PERSONAL",
     participants: patchJson(data.participants),
     transitFrom: data.transitFrom ?? null,
@@ -167,7 +175,8 @@ function buildUpdateData(data: ExpenseUpdate) {
     occurredAt: data.occurredAt ? new Date(data.occurredAt) : undefined,
     endAt:
       data.endAt === undefined ? undefined : data.endAt ? new Date(data.endAt) : null,
-    amount: data.amount ?? undefined,
+    // 0도 유효한 값이므로 nullish coalescing(??) 사용 금지 (0이면 업데이트가 누락됨)
+    amount: data.amount === undefined ? undefined : data.amount,
     category: data.category ?? undefined,
     merchant: patchNullable(data.merchant),
     detail: patchNullable(data.detail),
@@ -177,6 +186,13 @@ function buildUpdateData(data: ExpenseUpdate) {
     paymentMethodLabel: patchNullable(data.paymentMethodLabel),
     installment: data.installment ?? undefined,
     installmentMonths: patchNullable(data.installmentMonths),
+    installmentNoInterest: data.installmentNoInterest ?? undefined,
+    plannedAt:
+      data.plannedAt === undefined
+        ? undefined
+        : data.plannedAt
+          ? new Date(data.plannedAt)
+          : null,
     scope: data.scope ?? undefined,
     participants: patchJson(data.participants),
     transitFrom: patchNullable(data.transitFrom),

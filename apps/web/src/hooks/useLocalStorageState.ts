@@ -4,9 +4,9 @@ export function useLocalStorageState<T>(
   key: string,
   initialValue: T,
   opts?: {
-    // eslint-disable-next-line no-unused-vars
+     
     parse?: (_raw: string) => T;
-    // eslint-disable-next-line no-unused-vars
+     
     serialize?: (_value: T) => string;
   }
 ) {
