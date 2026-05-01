@@ -20,8 +20,9 @@ model Expense {
   paymentType        PaymentType @default(CARD) // 카드/현금/계좌 등
   paymentOwner       String?
   paymentMethodLabel String?
-  installment        Boolean     @default(false)
-  installmentMonths  Int?
+  installment             Boolean @default(false)
+  installmentMonths       Int?
+  installmentNoInterest   Boolean @default(false)
 
   scope              ExpenseScope @default(PERSONAL)
   participants       Json?        // 공동 정산 멤버 목록 (예: ["나","친구1"])
@@ -50,7 +51,7 @@ enum ExpenseScope {
 model ScheduleItem {
   id        String   @id @default(cuid())
   startAt   DateTime
-  endAt     DateTime
+  endAt     DateTime?
   title     String
   note      String?
 

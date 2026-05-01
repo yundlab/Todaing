@@ -6,7 +6,7 @@ export const schedulesRouter = Router();
 
 const scheduleCreateSchema = z.object({
   startAt: z.string().datetime(),
-  endAt: z.string().datetime(),
+  endAt: z.string().datetime().nullable().optional(),
   title: z.string().min(1).max(80),
   note: z.string().max(500).nullable().optional()
 });
@@ -40,8 +40,9 @@ schedulesRouter.post("/", async (req, res) => {
   }
 
   const startAt = new Date(parsed.data.startAt);
-  const endAt = new Date(parsed.data.endAt);
-  if (!(startAt < endAt)) {
+  const endAt =
+    parsed.data.endAt == null || parsed.data.endAt === undefined ? null : new Date(parsed.data.endAt);
+  if (endAt != null && !(startAt < endAt)) {
     res.status(400).send("startAt must be before endAt");
     return;
   }
@@ -73,8 +74,13 @@ schedulesRouter.patch("/:id", async (req, res) => {
   }
 
   const nextStartAt = parsed.data.startAt ? new Date(parsed.data.startAt) : existing.startAt;
-  const nextEndAt = parsed.data.endAt ? new Date(parsed.data.endAt) : existing.endAt;
-  if (!(nextStartAt < nextEndAt)) {
+  const nextEndAt =
+    parsed.data.endAt === undefined
+      ? existing.endAt
+      : parsed.data.endAt === null
+        ? null
+        : new Date(parsed.data.endAt);
+  if (nextEndAt != null && !(nextStartAt < nextEndAt)) {
     res.status(400).send("startAt must be before endAt");
     return;
   }
@@ -83,7 +89,7 @@ schedulesRouter.patch("/:id", async (req, res) => {
     where: { id },
     data: {
       startAt: parsed.data.startAt ? nextStartAt : undefined,
-      endAt: parsed.data.endAt ? nextEndAt : undefined,
+      endAt: parsed.data.endAt === undefined ? undefined : nextEndAt,
       title: parsed.data.title ?? undefined,
       note: parsed.data.note === undefined ? undefined : parsed.data.note ?? null
     }

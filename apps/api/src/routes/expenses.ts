@@ -19,6 +19,7 @@ const expenseCreateSchema = z.object({
   paymentMethodLabel: z.string().max(60).nullable().optional(),
   installment: z.boolean().optional(),
   installmentMonths: z.number().int().min(2).max(36).nullable().optional(),
+  installmentNoInterest: z.boolean().optional(),
   scope: z.enum(["PERSONAL", "SHARED"]).optional(),
   participants: z.unknown().nullable().optional(),
   transitFrom: z.string().max(40).nullable().optional(),
@@ -55,9 +56,10 @@ function sendZodError(
 }
 
 expensesRouter.get("/", async (_req, res) => {
+  // 클라이언트가 월·일 합계·타임라인을 목록으로 계산하므로, 상한만 두고 충분히 넓게 반환합니다.
   const items = await prisma.expense.findMany({
     orderBy: { occurredAt: "desc" },
-    take: 50
+    take: 5000
   });
   res.json({ items });
 });
@@ -150,6 +152,7 @@ function buildCreateData(data: ExpenseCreate) {
     paymentMethodLabel: data.paymentMethodLabel ?? null,
     installment: data.installment ?? false,
     installmentMonths: data.installmentMonths ?? null,
+    installmentNoInterest: data.installmentNoInterest ?? false,
     scope: data.scope ?? "PERSONAL",
     participants: patchJson(data.participants),
     transitFrom: data.transitFrom ?? null,
@@ -177,6 +180,7 @@ function buildUpdateData(data: ExpenseUpdate) {
     paymentMethodLabel: patchNullable(data.paymentMethodLabel),
     installment: data.installment ?? undefined,
     installmentMonths: patchNullable(data.installmentMonths),
+    installmentNoInterest: data.installmentNoInterest ?? undefined,
     scope: data.scope ?? undefined,
     participants: patchJson(data.participants),
     transitFrom: patchNullable(data.transitFrom),
