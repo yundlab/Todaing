@@ -1584,7 +1584,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
     setExAmount("");
     setExMerchant("");
-    setExDetail("");
+    setExDetail(np.detail ?? "");
     setExPaymentType("CARD");
     setExPaymentLabel("");
     setPayerPreset("나");
@@ -3107,7 +3107,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                       />
                     </label>
                     <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">세부내용</div>
+                      <div className="mb-1 text-xs text-slate-400">세부 내용</div>
                       <input
                         value={exDetail}
                         onChange={(e) => setExDetail(e.target.value)}
@@ -3143,6 +3143,15 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         value={entryNote}
                         onChange={(e) => setEntryNote(e.target.value)}
                         placeholder="예: 최가네, 할리스"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">세부 내용</div>
+                      <input
+                        value={exDetail}
+                        onChange={(e) => setExDetail(e.target.value)}
+                        placeholder="예: 좌석 G14 / 예매번호"
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                       />
                     </label>

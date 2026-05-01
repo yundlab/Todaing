@@ -191,7 +191,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         .trim();
     const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
     const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
-    const note = encodeScheduleNote(schedulePeopleText, mergedNote);
+    const note = encodeScheduleNote(schedulePeopleText, mergedNote, exDetail);
     try {
       await updateSchedule({
         id: composeEditScheduleId,
@@ -494,7 +494,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         .trim();
     const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
     const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
-    const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote);
+    const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote, exDetail);
 
     try {
       await createSchedule({
