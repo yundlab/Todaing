@@ -1602,6 +1602,404 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     );
   }
 
+  type ComposeSubmitArgs = {
+    category: string;
+    title: string;
+    startMin: number;
+    convertFromExpenseId: string | null;
+    convertFromScheduleId: string | null;
+  };
+
+  async function submitEditSchedule(args: ComposeSubmitArgs) {
+    if (!composeEditScheduleId) return;
+    const { category, title, startMin } = args;
+    const eMin = entryEndText.trim() ? parseFlexibleTimeToMinutes(entryEndText) : null;
+    if (eMin != null && !(startMin < eMin)) {
+      window.alert("끝 시간은 시작보다 늦아야 해.");
+      return;
+    }
+    const catNorm = normalizeCategory(category);
+    const startAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
+    const endAt =
+      eMin != null ? dateFromSlotMinutes(composeDayLocal00, eMin).toISOString() : null;
+    const scheduleTitle = `${emojiForCategory(catNorm)} ${title}`.trim();
+    const transitMemo =
+      catNorm === "교통2"
+        ? (() => {
+            const from = exTransitFromText.trim();
+            const to = exTransitToText.trim();
+            if (!from && !to) return "";
+            return `${exTransitMode} ${from || "?"} → ${to || "?"}`.trim();
+          })()
+        : "";
+    const stripTransit2Line = (raw: string) =>
+      raw
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(
+          (s) =>
+            !(
+              s.includes("→") &&
+              (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈"))
+            )
+        )
+        .join("\n")
+        .trim();
+    const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
+    const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
+    const note = encodeScheduleNote(schedulePeopleText, mergedNote);
+    await updateSchedule.mutateAsync({
+      id: composeEditScheduleId,
+      input: {
+        startAt,
+        endAt,
+        title: scheduleTitle,
+        note
+      }
+    });
+    handleComposeClose();
+  }
+
+  async function submitEditExpense(args: ComposeSubmitArgs) {
+    if (!composeEditExpenseId) return;
+    const { category, title, startMin } = args;
+    const transit = isTransitCategory;
+    if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
+      window.alert("기타 결제수단 이름을 입력해줘.");
+      return;
+    }
+    const merchantTrim = exMerchant.trim();
+    if (!transit && !merchantTrim) {
+      window.alert("결제처를 입력해줘.");
+      return;
+    }
+    const parsedAmount = parseAmountInput(exAmount);
+    if (parsedAmount == null) {
+      window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
+      return;
+    }
+    const endMinParsed = entryEndText.trim()
+      ? parseFlexibleTimeToMinutes(entryEndText)
+      : null;
+    if (endMinParsed != null && !(startMin < endMinParsed)) {
+      window.alert("끝 시간은 시작보다 늦아야 해.");
+      return;
+    }
+    const endMin = endMinParsed;
+    const occurredAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
+    const endAt =
+      endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
+    const catNorm = normalizeCategory(category);
+    const payerName =
+      payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
+    const participants =
+      expenseScope === "SHARED"
+        ? Array.from(
+            new Set(
+              sharedNamesText
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            )
+          )
+        : null;
+    const participantsAll =
+      expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+    const detailCombined =
+      [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
+    const transitPayload = buildTransitPayload(catNorm, {
+      legs: transitLegs,
+      transit2: {
+        mode: exTransitMode,
+        start: entryStartText.trim(),
+        end: entryEndText.trim(),
+        fromText: exTransitFromText,
+        toText: exTransitToText
+      }
+    });
+    await updateExpense.mutateAsync({
+      id: composeEditExpenseId,
+      input: {
+        occurredAt,
+        endAt,
+        amount: parsedAmount,
+        category: catNorm,
+        paymentType: exPaymentType,
+        paymentMethodLabel:
+          exPaymentType === "CASH"
+            ? null
+            : exPaymentLabel.trim()
+              ? exPaymentLabel.trim()
+              : null,
+        paymentOwner: payerName,
+        scope: expenseScope,
+        participants: participantsAll,
+        merchant: merchantTrim ? merchantTrim : null,
+        detail: detailCombined,
+        memo: entryNote.trim() ? entryNote.trim() : null,
+        ...installmentPayload(
+          exPaymentType,
+          exInstallment,
+          exInstallmentMonths,
+          exInstallmentNoInterest
+        ),
+        ...transitPayload
+      }
+    });
+    handleComposeClose();
+  }
+
+  async function submitNewSchedule(args: ComposeSubmitArgs) {
+    const { category, title, startMin, convertFromExpenseId } = args;
+    const endRequired = false;
+    const endMinParsed = entryEndText.trim()
+      ? parseFlexibleTimeToMinutes(entryEndText)
+      : null;
+    let endMin: number | null = null;
+    if (endRequired) {
+      if (endMinParsed == null) {
+        window.alert("끝 시간을 입력해줘.");
+        return;
+      }
+      endMin = endMinParsed;
+      if (!(startMin < endMin)) {
+        window.alert("끝 시간은 시작보다 늦아야 해.");
+        return;
+      }
+    } else if (endMinParsed != null) {
+      if (!(startMin < endMinParsed)) {
+        window.alert("끝 시간은 시작보다 늦아야 해.");
+        return;
+      }
+      endMin = endMinParsed;
+    }
+    const startAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
+    const endAt =
+      endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
+    const catNorm = normalizeCategory(category);
+
+    if (scheduleWithExpense && exPaymentType === "ETC" && !exPaymentLabel.trim()) {
+      window.alert("기타 결제수단 이름을 입력해줘.");
+      return;
+    }
+
+    const scheduleTitle = `${emojiForCategory(catNorm)} ${title}`.trim();
+    const transitMemo =
+      catNorm === "교통2"
+        ? (() => {
+            const from = exTransitFromText.trim();
+            const to = exTransitToText.trim();
+            if (!from && !to) return "";
+            return `${exTransitMode} ${from || "?"} → ${to || "?"}`.trim();
+          })()
+        : "";
+    const stripTransit2Line = (raw: string) =>
+      raw
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(
+          (s) =>
+            !(
+              s.includes("→") &&
+              (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈"))
+            )
+        )
+        .join("\n")
+        .trim();
+    const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
+    const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
+    const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote);
+
+    await createSchedule.mutateAsync({
+      startAt,
+      endAt,
+      title: scheduleTitle,
+      note: scheduleNote
+    });
+
+    if (scheduleWithExpense) {
+      const amount = parseAmountInput(exAmount);
+      if (amount == null) {
+        window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
+        return;
+      }
+      const payMinRaw = schedulePayTimeText.trim()
+        ? parseFlexibleTimeToMinutes(schedulePayTimeText)
+        : startMin;
+      if (payMinRaw == null) {
+        window.alert("결제 시각을 확인해줘.");
+        return;
+      }
+      const occurredAt = dateFromSlotMinutes(composeDayLocal00, payMinRaw).toISOString();
+
+      const transitPayload = buildTransitPayload(entryCategory, {
+        legs: transitLegs,
+        transit2: {
+          mode: exTransitMode,
+          start: entryStartText.trim(),
+          end: entryEndText.trim(),
+          fromText: exTransitFromText,
+          toText: exTransitToText
+        }
+      });
+
+      const payerName =
+        payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
+
+      const participants =
+        expenseScope === "SHARED"
+          ? Array.from(
+              new Set(
+                sharedNamesText
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              )
+            )
+          : null;
+      const participantsAll =
+        expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+
+      const merchantTrim = exMerchant.trim();
+      const merchantFinal = merchantTrim || title;
+
+      await createExpense.mutateAsync({
+        occurredAt,
+        endAt,
+        amount,
+        category,
+        merchant: merchantFinal,
+        detail: exDetail.trim() ? exDetail.trim() : null,
+        memo: null,
+        paymentType: exPaymentType,
+        paymentOwner: payerName,
+        paymentMethodLabel:
+          exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
+        ...installmentPayload(
+          exPaymentType,
+          exInstallment,
+          exInstallmentMonths,
+          exInstallmentNoInterest
+        ),
+        scope: expenseScope,
+        participants: participantsAll,
+        ...transitPayload
+      });
+    }
+
+    if (convertFromExpenseId) {
+      await deleteExpense.mutateAsync(convertFromExpenseId);
+      setComposeConvertFromExpenseId(null);
+    }
+    handleComposeClose();
+  }
+
+  async function submitNewExpense(args: ComposeSubmitArgs) {
+    const { category, title, startMin, convertFromScheduleId } = args;
+    const transit = isTransitCategory;
+    const endRequired = false;
+    const endMinParsed = entryEndText.trim()
+      ? parseFlexibleTimeToMinutes(entryEndText)
+      : null;
+    let endMin: number | null = null;
+    if (endRequired) {
+      if (endMinParsed == null) {
+        window.alert("끝 시간을 입력해줘.");
+        return;
+      }
+      endMin = endMinParsed;
+      if (!(startMin < endMin)) {
+        window.alert("끝 시간은 시작보다 늦아야 해.");
+        return;
+      }
+    } else if (endMinParsed != null) {
+      if (!(startMin < endMinParsed)) {
+        window.alert("끝 시간은 시작보다 늦아야 해.");
+        return;
+      }
+      endMin = endMinParsed;
+    }
+    const startAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
+    const endAt =
+      endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
+
+    if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
+      window.alert("기타 결제수단 이름을 입력해줘.");
+      return;
+    }
+
+    const merchantTrim = exMerchant.trim();
+    if (!transit && !merchantTrim) {
+      window.alert("결제처를 입력해줘.");
+      return;
+    }
+
+    const amount = parseAmountInput(exAmount);
+    if (amount == null) {
+      window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
+      return;
+    }
+
+    const transitPayload = buildTransitPayload(entryCategory, {
+      legs: transitLegs,
+      transit2: {
+        mode: exTransitMode,
+        start: entryStartText.trim(),
+        end: entryEndText.trim(),
+        fromText: exTransitFromText,
+        toText: exTransitToText
+      }
+    });
+
+    const payerName =
+      payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
+
+    const participants =
+      expenseScope === "SHARED"
+        ? Array.from(
+            new Set(
+              sharedNamesText
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            )
+          )
+        : null;
+    const participantsAll =
+      expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+
+    const detailCombined = [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
+
+    await createExpense.mutateAsync({
+      occurredAt: startAt,
+      endAt,
+      amount,
+      category,
+      merchant: merchantTrim ? merchantTrim : null,
+      detail: detailCombined,
+      memo: entryNote.trim() ? entryNote.trim() : null,
+      paymentType: exPaymentType,
+      paymentOwner: payerName,
+      paymentMethodLabel:
+        exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
+      ...installmentPayload(
+        exPaymentType,
+        exInstallment,
+        exInstallmentMonths,
+        exInstallmentNoInterest
+      ),
+      scope: expenseScope,
+      participants: participantsAll,
+      ...transitPayload
+    });
+
+    if (convertFromScheduleId) {
+      await deleteSchedule.mutateAsync(convertFromScheduleId);
+      setComposeConvertFromScheduleId(null);
+    }
+    handleComposeClose();
+  }
+
   return (
     <div className="min-h-dvh">
       {headerEl}
@@ -2071,368 +2469,17 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 return;
               }
 
-              const transit = isTransitCategory;
-              // 지출(교통)은 도착시간이 필수지만, 일정(교통)은 도착시간 없이도 저장 가능하게 둔다.
-              const endRequired = false;
-
-              if (composeEditScheduleId) {
-                const eMin = entryEndText.trim() ? parseFlexibleTimeToMinutes(entryEndText) : null;
-                if (eMin != null && !(startMin < eMin)) {
-                  window.alert("끝 시간은 시작보다 늦아야 해.");
-                  return;
-                }
-                const catNorm = normalizeCategory(category);
-                const startAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
-                const endAt =
-                  eMin != null ? dateFromSlotMinutes(composeDayLocal00, eMin).toISOString() : null;
-                const scheduleTitle = `${emojiForCategory(catNorm)} ${title}`.trim();
-                const transitMemo =
-                  catNorm === "교통2"
-                    ? (() => {
-                        const from = exTransitFromText.trim();
-                        const to = exTransitToText.trim();
-                        if (!from && !to) return "";
-                        return `${exTransitMode} ${from || "?"} → ${to || "?"}`.trim();
-                      })()
-                    : "";
-                const stripTransit2Line = (raw: string) =>
-                  raw
-                    .split("\n")
-                    .map((s) => s.trim())
-                    .filter(
-                      (s) =>
-                        !(
-                          s.includes("→") &&
-                          (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈"))
-                        )
-                    )
-                    .join("\n")
-                    .trim();
-                const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
-                const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
-                const note = encodeScheduleNote(schedulePeopleText, mergedNote);
-                await updateSchedule.mutateAsync({
-                  id: composeEditScheduleId,
-                  input: {
-                    startAt,
-                    endAt,
-                    title: scheduleTitle,
-                    note
-                  }
-                });
-                handleComposeClose();
-                return;
-              }
-
-              if (composeEditExpenseId) {
-                if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
-                  window.alert("기타 결제수단 이름을 입력해줘.");
-                  return;
-                }
-                const merchantTrim = exMerchant.trim();
-                if (!transit && !merchantTrim) {
-                  window.alert("결제처를 입력해줘.");
-                  return;
-                }
-                const parsedAmount = parseAmountInput(exAmount);
-                if (parsedAmount == null) {
-                  window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
-                  return;
-                }
-                const endMinParsed = entryEndText.trim()
-                  ? parseFlexibleTimeToMinutes(entryEndText)
-                  : null;
-                if (endMinParsed != null && !(startMin < endMinParsed)) {
-                  window.alert("끝 시간은 시작보다 늦아야 해.");
-                  return;
-                }
-                const endMin = endMinParsed;
-                const occurredAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
-                const endAt =
-                  endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
-                const catNorm = normalizeCategory(category);
-                const payerName =
-                  payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
-                const participants =
-                  expenseScope === "SHARED"
-                    ? Array.from(
-                        new Set(
-                          sharedNamesText
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean)
-                        )
-                      )
-                    : null;
-                const participantsAll =
-                  expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
-                const detailCombined =
-                  [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
-                const transitPayload = buildTransitPayload(catNorm, {
-                  legs: transitLegs,
-                  transit2: {
-                    mode: exTransitMode,
-                    start: entryStartText.trim(),
-                    end: entryEndText.trim(),
-                    fromText: exTransitFromText,
-                    toText: exTransitToText
-                  }
-                });
-                await updateExpense.mutateAsync({
-                  id: composeEditExpenseId,
-                  input: {
-                    occurredAt,
-                    endAt,
-                    amount: parsedAmount,
-                    category: catNorm,
-                    paymentType: exPaymentType,
-                    paymentMethodLabel:
-                      exPaymentType === "CASH"
-                        ? null
-                        : exPaymentLabel.trim()
-                          ? exPaymentLabel.trim()
-                          : null,
-                    paymentOwner: payerName,
-                    scope: expenseScope,
-                    participants: participantsAll,
-                    merchant: merchantTrim ? merchantTrim : null,
-                    detail: detailCombined,
-                    memo: entryNote.trim() ? entryNote.trim() : null,
-                    ...installmentPayload(
-                      exPaymentType,
-                      exInstallment,
-                      exInstallmentMonths,
-                      exInstallmentNoInterest
-                    ),
-                    ...transitPayload
-                  }
-                });
-                handleComposeClose();
-                return;
-              }
-
-              const endMinParsed = entryEndText.trim()
-                ? parseFlexibleTimeToMinutes(entryEndText)
-                : null;
-
-              let endMin: number | null = null;
-              if (endRequired) {
-                if (endMinParsed == null) {
-                  window.alert("끝 시간을 입력해줘.");
-                  return;
-                }
-                endMin = endMinParsed;
-                if (!(startMin < endMin)) {
-                  window.alert("끝 시간은 시작보다 늦아야 해.");
-                  return;
-                }
-              } else if (endMinParsed != null) {
-                if (!(startMin < endMinParsed)) {
-                  window.alert("끝 시간은 시작보다 늦아야 해.");
-                  return;
-                }
-                endMin = endMinParsed;
-              }
-
-              const startAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
-              const endAt =
-                endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
-
-              const catNorm = normalizeCategory(category);
-
-              if (composeKind === "schedule") {
-                if (scheduleWithExpense && exPaymentType === "ETC" && !exPaymentLabel.trim()) {
-                  window.alert("기타 결제수단 이름을 입력해줘.");
-                  return;
-                }
-
-                const scheduleTitle = `${emojiForCategory(catNorm)} ${title}`.trim();
-                const transitMemo =
-                  catNorm === "교통2"
-                    ? (() => {
-                        const from = exTransitFromText.trim();
-                        const to = exTransitToText.trim();
-                        if (!from && !to) return "";
-                        return `${exTransitMode} ${from || "?"} → ${to || "?"}`.trim();
-                      })()
-                    : "";
-                const stripTransit2Line = (raw: string) =>
-                  raw
-                    .split("\n")
-                    .map((s) => s.trim())
-                    .filter(
-                      (s) =>
-                        !(
-                          s.includes("→") &&
-                          (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈"))
-                        )
-                    )
-                    .join("\n")
-                    .trim();
-                const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
-                const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
-                const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote);
-
-                await createSchedule.mutateAsync({
-                  startAt,
-                  endAt,
-                  title: scheduleTitle,
-                  note: scheduleNote
-                });
-
-                if (scheduleWithExpense) {
-                  const amount = parseAmountInput(exAmount);
-                  if (amount == null) {
-                    window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
-                    return;
-                  }
-                  const payMinRaw = schedulePayTimeText.trim()
-                    ? parseFlexibleTimeToMinutes(schedulePayTimeText)
-                    : startMin;
-                  if (payMinRaw == null) {
-                    window.alert("결제 시각을 확인해줘.");
-                    return;
-                  }
-                  const occurredAt = dateFromSlotMinutes(composeDayLocal00, payMinRaw).toISOString();
-
-                  const transitPayload = buildTransitPayload(entryCategory, {
-                    legs: transitLegs,
-                    transit2: {
-                      mode: exTransitMode,
-                      start: entryStartText.trim(),
-                      end: entryEndText.trim(),
-                      fromText: exTransitFromText,
-                      toText: exTransitToText
-                    }
-                  });
-
-                  const payerName =
-                    payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
-
-                  const participants =
-                    expenseScope === "SHARED"
-                      ? Array.from(
-                          new Set(
-                            sharedNamesText
-                              .split(",")
-                              .map((s) => s.trim())
-                              .filter(Boolean)
-                          )
-                        )
-                      : null;
-                  const participantsAll =
-                    expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
-
-                  const merchantTrim = exMerchant.trim();
-                  const merchantFinal = merchantTrim || title;
-
-                  await createExpense.mutateAsync({
-                    occurredAt,
-                    endAt,
-                    amount,
-                    category,
-                    merchant: merchantFinal,
-                    detail: exDetail.trim() ? exDetail.trim() : null,
-                    memo: null,
-                    paymentType: exPaymentType,
-                    paymentOwner: payerName,
-                    paymentMethodLabel:
-                      exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
-                    ...installmentPayload(
-                      exPaymentType,
-                      exInstallment,
-                      exInstallmentMonths,
-                      exInstallmentNoInterest
-                    ),
-                    scope: expenseScope,
-                    participants: participantsAll,
-                    ...transitPayload
-                  });
-                }
-
-                if (convertFromExpenseId) {
-                  await deleteExpense.mutateAsync(convertFromExpenseId);
-                  setComposeConvertFromExpenseId(null);
-                }
-                handleComposeClose();
-                return;
-              }
-
-              if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
-                window.alert("기타 결제수단 이름을 입력해줘.");
-                return;
-              }
-
-              const merchantTrim = exMerchant.trim();
-              if (!transit && !merchantTrim) {
-                window.alert("결제처를 입력해줘.");
-                return;
-              }
-
-              const amount = parseAmountInput(exAmount);
-              if (amount == null) {
-                window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
-                return;
-              }
-
-              const transitPayload = buildTransitPayload(entryCategory, {
-                legs: transitLegs,
-                transit2: {
-                  mode: exTransitMode,
-                  start: entryStartText.trim(),
-                  end: entryEndText.trim(),
-                  fromText: exTransitFromText,
-                  toText: exTransitToText
-                }
-              });
-
-              const payerName =
-                payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
-
-              const participants =
-                expenseScope === "SHARED"
-                  ? Array.from(
-                      new Set(
-                        sharedNamesText
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      )
-                    )
-                  : null;
-              const participantsAll =
-                expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
-
-              const detailCombined = [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
-
-              await createExpense.mutateAsync({
-                occurredAt: startAt,
-                endAt,
-                amount,
+              const args = {
                 category,
-                merchant: merchantTrim ? merchantTrim : null,
-                detail: detailCombined,
-                memo: entryNote.trim() ? entryNote.trim() : null,
-                paymentType: exPaymentType,
-                paymentOwner: payerName,
-                paymentMethodLabel:
-                  exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
-                ...installmentPayload(
-                  exPaymentType,
-                  exInstallment,
-                  exInstallmentMonths,
-                  exInstallmentNoInterest
-                ),
-                scope: expenseScope,
-                participants: participantsAll,
-                ...transitPayload
-              });
-
-              if (convertFromScheduleId) {
-                await deleteSchedule.mutateAsync(convertFromScheduleId);
-                setComposeConvertFromScheduleId(null);
-              }
-              handleComposeClose();
+                title,
+                startMin,
+                convertFromExpenseId,
+                convertFromScheduleId
+              };
+              if (composeEditScheduleId) return submitEditSchedule(args);
+              if (composeEditExpenseId) return submitEditExpense(args);
+              if (composeKind === "schedule") return submitNewSchedule(args);
+              return submitNewExpense(args);
             }}
           >
             저장
