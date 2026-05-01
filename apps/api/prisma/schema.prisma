@@ -24,6 +24,9 @@ model Expense {
   installmentMonths       Int?
   installmentNoInterest   Boolean @default(false)
 
+  // 결제일(occurredAt)과 다른 "사용 예정/실제일". null이면 결제일과 동일.
+  plannedAt               DateTime?
+
   scope              ExpenseScope @default(PERSONAL)
   participants       Json?        // 공동 정산 멤버 목록 (예: ["나","친구1"])
 
@@ -40,6 +43,7 @@ model Expense {
   updatedAt  DateTime @updatedAt
 
   @@index([occurredAt])
+  @@index([plannedAt])
   @@index([createdAt])
 }
 
