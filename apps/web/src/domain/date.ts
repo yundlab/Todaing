@@ -20,12 +20,12 @@ export function dateFromSlotMinutes(dayLocal00: Date, minutes: number) {
   return d;
 }
 
-export function timeRangeLabel(startAt: string, endAt: string) {
+export function timeRangeLabel(startAt: string, endAt?: string | null) {
   const s = new Date(startAt);
+  const startPart = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
+  if (!endAt) return startPart;
   const e = new Date(endAt);
-  return `${pad2(s.getHours())}:${pad2(s.getMinutes())}~${pad2(e.getHours())}:${pad2(
-    e.getMinutes()
-  )}`;
+  return `${startPart}~${pad2(e.getHours())}:${pad2(e.getMinutes())}`;
 }
 
 export function expenseTimeLabel(occurredAt: string, baseDayLocal00: Date) {

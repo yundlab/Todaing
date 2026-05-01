@@ -5,7 +5,8 @@ import {
   getExpenseSummary,
   getMonthlyExpenseSummary,
   listExpenses,
-  updateExpense
+  updateExpense,
+  type ExpenseListResponse
 } from "./api";
 
 const EXPENSE_QUERY_KEYS = [
@@ -21,7 +22,9 @@ async function invalidateExpenseQueries(qc: QueryClient) {
 export function useExpenses() {
   return useQuery({
     queryKey: ["expenses"],
-    queryFn: listExpenses
+    queryFn: listExpenses,
+    // 리패치 중에도 이전 목록 유지 → 방금 등록한 지출 카드가 비었다가 사라지는 느낌 완화
+    placeholderData: (previousData) => previousData
   });
 }
 
@@ -43,7 +46,17 @@ export function useCreateExpense() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createExpense,
-    onSuccess: () => invalidateExpenseQueries(qc)
+    onSuccess: (created) => {
+      qc.setQueryData<ExpenseListResponse>(["expenses"], (old) => {
+        const prev = old?.items ?? [];
+        const rest = prev.filter((e) => e.id !== created.id);
+        const items = [created, ...rest].sort(
+          (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+        );
+        return { items };
+      });
+      void invalidateExpenseQueries(qc);
+    }
   });
 }
 

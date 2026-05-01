@@ -3,7 +3,7 @@ import { http } from "../../lib/http";
 export type ScheduleItem = {
   id: string;
   startAt: string;
-  endAt: string;
+  endAt: string | null;
   title: string;
   note: string | null;
   createdAt: string;
@@ -12,7 +12,7 @@ export type ScheduleItem = {
 
 export type ScheduleCreateInput = {
   startAt: string;
-  endAt: string;
+  endAt?: string | null;
   title: string;
   note?: string | null;
 };
