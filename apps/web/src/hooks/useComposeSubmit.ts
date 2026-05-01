@@ -3,7 +3,7 @@ import type { ScheduleItem, ScheduleCreateInput } from "../features/schedules/ap
 import { parseFlexibleTimeToMinutes } from "../domain/time";
 import { dateFromSlotMinutes } from "../domain/date";
 import { normalizeCategory, emojiForCategory } from "../domain/categoryUi";
-import { buildTransitPayload, type TransitLeg } from "../domain/transitPayload";
+import { buildTransitPayload, type TransitLeg, type Transit2SegmentDraft } from "../domain/transitPayload";
 import { encodeScheduleNote } from "../domain/scheduleNote";
 import { parseAmountInput } from "../domain/parseAmountInput";
 import { sharedParticipantsAll } from "../domain/settlement";
@@ -39,16 +39,6 @@ function installmentPayload(
 
 /** Compose 시트의 폼 state·변환자·뮤테이션을 받아 4가지 저장 흐름을 노출한다. */
 type Mutate<TVars, TData> = (_vars: TVars) => Promise<TData>;
-
-export type Transit2SegmentDraft = {
-  dayKey?: string;
-  start: string;
-  end: string;
-  fromText: string;
-  toText: string;
-  mode: string;
-  memoText?: string | null;
-};
 
 export type UseComposeSubmitDeps = {
   // mutateAsync 메서드들
