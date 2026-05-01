@@ -32,7 +32,6 @@ export type MonthDetailViewProps = {
   requestToggleNetSettledForDay: (day: string, name: string) => void;
   settlementAllByDay?: Map<string, Map<string, number>>;
   aggregateMode?: AggregateMode;
-  modeToggle?: ReactNode;
 };
 
 export function MonthDetailView({
@@ -47,8 +46,7 @@ export function MonthDetailView({
   isNetSettledForDay,
   requestToggleNetSettledForDay,
   settlementAllByDay = new Map<string, Map<string, number>>(),
-  aggregateMode = "usage",
-  modeToggle
+  aggregateMode = "usage"
 }: MonthDetailViewProps) {
   const items = expenses ?? [];
   const monthItems = items.filter((e) => yyyyMmLocal(new Date(e.occurredAt)) === monthKey);
@@ -147,14 +145,11 @@ export function MonthDetailView({
           <section className="overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
             <div className="h-2 w-full bg-gradient-to-r from-teal-400 via-sky-400 to-indigo-400" />
             <div className="px-5 pb-5 pt-7">
-              <div className="flex items-baseline justify-between gap-3">
+                <div className="flex items-baseline justify-between gap-3">
                 <div className="text-xs font-semibold text-slate-500">
                   {aggregateMode === "cashflow" ? "이번 달 실출금" : "이번 달 지출"}
                 </div>
-                <div className="flex items-center gap-2">
                   <div className="text-xs font-semibold text-slate-500">{monthItems.length}건</div>
-                  {modeToggle ?? null}
-                </div>
               </div>
               <div className="mt-1 flex items-baseline gap-1 tabular-nums text-slate-900">
                 <span className="text-3xl font-extrabold tracking-tight">

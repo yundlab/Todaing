@@ -258,12 +258,12 @@ function CardInstallmentFields(props: {
 }) {
   return (
     <div className="mt-2">
-      <div className="mb-1 text-xs text-slate-400">카드 결제 방식</div>
+      <div className="mb-1 text-xs text-slate-400">카드 할부(필수)</div>
       <div className="flex gap-2">
         <button
           type="button"
           className={cn(
-            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+            "flex-1 rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
             !props.installment
               ? "border-indigo-600 bg-indigo-600 text-white"
               : "border-slate-200 bg-white text-slate-800"
@@ -278,7 +278,7 @@ function CardInstallmentFields(props: {
         <button
           type="button"
           className={cn(
-            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+            "flex-1 rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
             props.installment
               ? "border-indigo-600 bg-indigo-600 text-white"
               : "border-slate-200 bg-white text-slate-800"
@@ -291,28 +291,54 @@ function CardInstallmentFields(props: {
       {props.installment ? (
         <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-2">
           <label className="min-w-[8rem] flex-1">
-            <div className="mb-1 text-xs text-slate-400">할부 개월 수</div>
-            <select
-              value={props.months}
-              onChange={(e) => props.setMonths(Number(e.target.value))}
-              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-3 text-sm outline-none focus:border-slate-400"
+            <div className="mb-1 text-xs text-slate-400">할부 개월(필수)</div>
+            <div className="relative min-w-0">
+              <select
+                value={props.months}
+                onChange={(e) => props.setMonths(Number(e.target.value))}
+                className="w-full min-w-0 cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white px-3 py-3 pr-10 text-sm font-semibold outline-none focus:border-slate-400"
+              >
+                {INSTALLMENT_MONTH_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}개월
+                  </option>
+                ))}
+              </select>
+              <svg
+                viewBox="0 0 24 24"
+                className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              >
+                <path
+                  d="M6 9l6 6 6-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          </label>
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-3 pb-3"
+            onClick={() => props.setNoInterest(!props.noInterest)}
+            aria-pressed={props.noInterest}
+          >
+            <span
+              className={cn(
+                "inline-flex h-5 w-5 items-center justify-center rounded border",
+                props.noInterest
+                  ? "border-indigo-600 bg-indigo-600 text-white"
+                  : "border-slate-300 bg-white text-transparent"
+              )}
+              aria-hidden
             >
-              {INSTALLMENT_MONTH_OPTIONS.map((m) => (
-                <option key={m} value={m}>
-                  {m}개월
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex shrink-0 cursor-pointer items-center gap-2 pb-2.5">
-            <input
-              type="checkbox"
-              checked={props.noInterest}
-              onChange={(e) => props.setNoInterest(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-            />
-            <span className="text-sm text-slate-800">무이자</span>
-          </label>
+              ✓
+            </span>
+            <span className="text-sm font-semibold text-slate-900">무이자</span>
+          </button>
         </div>
       ) : null}
     </div>
@@ -1221,6 +1247,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
   const [schedulePayTimeText, setSchedulePayTimeText] = useState("");
   const [schedulePeopleText, setSchedulePeopleText] = useState("");
   const [scheduleShowOnCalendar, setScheduleShowOnCalendar] = useState(false);
+  const [scheduleExpenseTitle, setScheduleExpenseTitle] = useState("");
 
   const [expenseDetailOpen, setExpenseDetailOpen] = useState<Expense | null>(null);
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState<ScheduleItem | null>(null);
@@ -1395,17 +1422,10 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
       setEntryEndText("");
     }
     setEntryCategory(base.category);
-    const rawDetail = base.detail?.trim() ?? "";
-    if (rawDetail.includes(" · ")) {
-      const idx = rawDetail.indexOf(" · ");
-      setEntryTitle(rawDetail.slice(0, idx));
-      setExDetail(rawDetail.slice(idx + 3));
-    } else {
-      setEntryTitle("");
-      setExDetail(rawDetail);
-    }
+    setEntryTitle((base.memo ?? "").trim());
+    setExDetail((base.detail ?? "").trim());
     setExMerchant(base.merchant ?? "");
-    setEntryNote(base.memo ?? "");
+    setEntryNote("");
     setExAmount(formatAmountInputWithCommas(String(base.amount)));
     setExPaymentType(base.paymentType);
     setExPaymentLabel(base.paymentMethodLabel ?? "");
@@ -1585,6 +1605,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         .join("\n")
         .trim();
     setEntryNote(stripTransit2Line(np.memo ?? ""));
+    setScheduleExpenseTitle(parsed.content);
 
     setExAmount("");
     setExMerchant("");
@@ -1722,7 +1743,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     let iReceive = 0;
     const perPerson = new Map<string, number>();
     for (const e of todayExpenses) {
-      if (e.scope !== "SHARED") continue;
       const d = settlementDeltaForMe(e, me);
       iPay += d.iPay;
       iReceive += d.iReceive;
@@ -1911,8 +1931,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         }
         setSelectedDay(d);
       }}
-      showDetailClose={todayExpenseDetailOpen || monthExpenseDetailOpen || calendarOpen}
-      onDetailClose={() => navigate("/", { replace: false })}
       rightSlot={<AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} size="xs" />}
     />
   );
@@ -2043,7 +2061,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               <div className="p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-semibold text-slate-900">달력</div>
-                  <AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} />
                 </div>
                 <div className="mt-2 flex items-baseline justify-between">
                   <div className="text-[11px] font-semibold text-slate-500">
@@ -2072,41 +2089,44 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                     const dayTone = isSun || isHoliday ? "text-rose-600" : isSat ? "text-indigo-600" : "text-slate-900";
                     const spend = spendByDay.get(dayKeyCell) ?? 0;
                     const sched = schedulesByDay.get(dayKeyCell) ?? [];
-                    const titles = sched.map((s) => {
-                      const parsed = parseEmojiPrefixedTitle(s.title);
-                      // 달력에는 "일정에 적힌 금액" 노출하지 않기 (예: "점심 12,000원" → "점심")
-                      const raw = (parsed.content || s.title || "").trim();
-                      return raw.replace(/\s*\(?\d{1,3}(?:,\d{3})*(?:원|₩)\)?\s*$/g, "").trim() || raw;
-                    });
-                    const maxShow = 3;
-                    const shown = titles.slice(0, maxShow);
-                    const rest = titles.length - shown.length;
+                    const schedIcons = sched
+                      .map((s) => {
+                        const parsed = parseEmojiPrefixedTitle(s.title || "");
+                        return emojiForCategory(normalizeCategory(parsed.category || "기타"));
+                      })
+                      .filter(Boolean);
+                    const maxShow = 6;
+                    const shown = schedIcons.slice(0, maxShow);
+                    const rest = schedIcons.length - shown.length;
                     return (
                       <button
                         key={dayKeyCell}
                         type="button"
-                        className="relative h-[92px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-sm hover:brightness-[0.99]"
+                        className="relative h-[92px] overflow-hidden rounded-2xl border border-slate-200 bg-white px-1 pb-1 pt-0.5 text-left shadow-sm hover:brightness-[0.99]"
                         onClick={() => navigate(`/today/${dayKeyCell}`)}
                         title={dayKeyCell}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className={cn("text-xs font-extrabold tabular-nums", dayTone)}>{dayNum}</div>
-                          {spend ? (
-                            <div className="min-w-0 text-right text-[10px] font-semibold tabular-nums tracking-tight text-slate-600 whitespace-nowrap">
+                        <div className="flex h-full min-w-0 flex-col">
+                          <div className="h-[28px] min-w-0">
+                            <div className={cn("text-xs font-extrabold tabular-nums leading-none", dayTone)}>{dayNum}</div>
+                            <div
+                              className={cn(
+                                "mt-1 whitespace-nowrap text-[10px] font-semibold tabular-nums tracking-tight text-slate-600",
+                                spend ? "opacity-100" : "opacity-0",
+                              )}
+                            >
                               {formatCalendarWon(spend)}
                             </div>
-                          ) : (
-                            <div className="min-w-0" />
-                          )}
-                        </div>
-                        <div className="mt-2 space-y-0.5">
-                          {shown.map((t, i) => (
-                            <div key={i} className="truncate text-[11px] font-semibold text-slate-500">
-                              {t}
+                          </div>
+                          {shown.length ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {shown.map((ic, i) => (
+                                <span key={i} className="text-[13px] leading-none" aria-hidden>
+                                  {ic}
+                                </span>
+                              ))}
+                              {rest > 0 ? <span className="text-[11px] font-semibold text-slate-400">+{rest}</span> : null}
                             </div>
-                          ))}
-                          {rest > 0 ? (
-                            <div className="text-[11px] font-semibold text-slate-400">+{rest}</div>
                           ) : null}
                         </div>
                       </button>
@@ -2155,9 +2175,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
           requestToggleNetSettledForDay={requestToggleNetSettledForDay}
           settlementAllByDay={settlementAllByDay}
           aggregateMode={aggregateMode}
-          modeToggle={
-            <AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} size="xs" />
-          }
         />
         <BottomNav />
       </>
@@ -2288,6 +2305,16 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
         return;
       }
+      const merchantTrim = exMerchant.trim();
+      if (!merchantTrim) {
+        window.alert("결제처를 입력해줘.");
+        return;
+      }
+      const expenseTitleTrim = scheduleExpenseTitle.trim();
+      if (!expenseTitleTrim) {
+        window.alert("내용을 입력해줘.");
+        return;
+      }
       const payMinRaw = schedulePayTimeText.trim()
         ? parseFlexibleTimeToMinutes(schedulePayTimeText)
         : startMin;
@@ -2337,8 +2364,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
       const participantsAll =
         expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
 
-      const merchantTrim = exMerchant.trim();
-      const merchantFinal = merchantTrim || title;
+      const merchantFinal = merchantTrim;
 
       try {
         await createExpense.mutateAsync({
@@ -2348,7 +2374,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
           category: catNorm,
           merchant: merchantFinal,
           detail: exDetail.trim() ? exDetail.trim() : null,
-          memo: entryNote.trim() ? entryNote.trim() : null,
+          memo: expenseTitleTrim,
           paymentType: exPaymentType,
           paymentOwner: payerName,
           paymentMethodLabel:
@@ -2385,13 +2411,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
   async function submitEditExpense(args: ComposeSubmitArgs) {
     if (!composeEditExpenseId) return;
     const { category, title, startMin } = args;
-    const transit = isTransitCategory;
     if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
       window.alert("기타 결제수단 이름을 입력해줘.");
       return;
     }
     const merchantTrim = exMerchant.trim();
-    if (!transit && !merchantTrim) {
+    if (!merchantTrim) {
       window.alert("결제처를 입력해줘.");
       return;
     }
@@ -2427,8 +2452,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         : null;
     const participantsAll =
       expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
-    const detailCombined =
-      [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
+    const memoText = title.trim();
+    const detailOnly = exDetail.trim();
     const transitPayload = buildTransitPayload(catNorm, {
       legs: transitLegs,
       transit2: {
@@ -2471,8 +2496,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
           scope: expenseScope,
           participants: participantsAll,
           merchant: merchantTrim ? merchantTrim : null,
-          detail: detailCombined,
-          memo: entryNote.trim() ? entryNote.trim() : null,
+          detail: detailOnly ? detailOnly : null,
+          memo: memoText ? memoText : null,
           ...installmentPayload(
             exPaymentType,
             exInstallment,
@@ -2579,6 +2604,16 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
         return;
       }
+      const merchantTrim = exMerchant.trim();
+      if (!merchantTrim) {
+        window.alert("결제처를 입력해줘.");
+        return;
+      }
+      const expenseTitleTrim = scheduleExpenseTitle.trim();
+      if (!expenseTitleTrim) {
+        window.alert("내용을 입력해줘.");
+        return;
+      }
       const payMinRaw = schedulePayTimeText.trim()
         ? parseFlexibleTimeToMinutes(schedulePayTimeText)
         : startMin;
@@ -2630,8 +2665,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
       const participantsAll =
         expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
 
-      const merchantTrim = exMerchant.trim();
-      const merchantFinal = merchantTrim || title;
+      const merchantFinal = merchantTrim;
 
       try {
         await createExpense.mutateAsync({
@@ -2641,7 +2675,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
           category,
           merchant: merchantFinal,
           detail: exDetail.trim() ? exDetail.trim() : null,
-          memo: entryNote.trim() ? entryNote.trim() : null,
+          memo: expenseTitleTrim,
           paymentType: exPaymentType,
           paymentOwner: payerName,
           paymentMethodLabel:
@@ -2681,7 +2715,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
   async function submitNewExpense(args: ComposeSubmitArgs) {
     const { category, title, startMin, convertFromScheduleId } = args;
-    const transit = isTransitCategory;
     const endRequired = false;
     const endMinParsed = entryEndText.trim()
       ? parseFlexibleTimeToMinutes(entryEndText)
@@ -2714,7 +2747,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     }
 
     const merchantTrim = exMerchant.trim();
-    if (!transit && !merchantTrim) {
+    if (!merchantTrim) {
       window.alert("결제처를 입력해줘.");
       return;
     }
@@ -2753,7 +2786,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     const participantsAll =
       expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
 
-    const detailCombined = [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
+    const memoText = title.trim();
+    const detailOnly = exDetail.trim();
 
     try {
       await createExpense.mutateAsync({
@@ -2762,8 +2796,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         amount,
         category,
         merchant: merchantTrim ? merchantTrim : null,
-        detail: detailCombined,
-        memo: entryNote.trim() ? entryNote.trim() : null,
+        detail: detailOnly ? detailOnly : null,
+        memo: memoText ? memoText : null,
         paymentType: exPaymentType,
         paymentOwner: payerName,
         paymentMethodLabel:
@@ -2862,7 +2896,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             <div className="mt-4 rounded-3xl border border-indigo-200/70 bg-slate-50/70 p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold text-slate-500">이번달 예산 현황</div>
-                <AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} size="xs" />
               </div>
               <div className="mt-2 h-2 w-full rounded-full bg-white">
                 <div
@@ -3087,8 +3120,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   : null;
               const settlementLine = isCashflowVirtual ? null : settlementLineForExpense(e, "나");
               const isSettled = isCashflowVirtual ? true : isExpenseNetSettledForDay(dayKey, e, "나");
-              // 카드 하단 “메모”는 사용자가 입력한 memo를 우선 노출 (detail보다 우선)
-              const rawMemoText = (e.memo ?? e.detail ?? "").trim();
+              // 카드에는 세부내용(detail) 노출하지 않음. (메모만 노출)
+              const rawMemoText = (e.memo ?? "").trim();
               const memoText =
                 normalizeCategory(e.category) === "교통2" && isUsageDayDifferent(e, dayKey)
                   ? stripTransitRoutePrefix(rawMemoText, e.transitFrom, e.transitTo).trim()
@@ -3358,6 +3391,10 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 window.alert("내용을 입력해줘.");
                 return;
               }
+              if (composeKind === "schedule" && !entryNote.trim()) {
+                window.alert("내용을 입력해줘.");
+                return;
+              }
 
               const catNormForTime = normalizeCategory(category);
               const startMin =
@@ -3436,53 +3473,115 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                     일정
                   </button>
                 </div>
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">날짜</div>
-                  <DateMonthInput
-                    type="date"
-                    value={composeDayKey}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (!v) return;
-                      setComposeDayKey(v);
-                    }}
-                    className="text-sm"
-                  />
-                </label>
-                {composeKind === "expense" && !isTransit2 ? (
-                  <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
-                    <label className="flex cursor-pointer items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={plannedAtEnabled}
-                        onChange={(e) => setPlannedAtEnabled(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                      />
-                      <span className="text-sm font-semibold text-slate-800">결제일과 다른 날 사용</span>
-                    </label>
-                    {plannedAtEnabled ? (
-                      <label className="mt-3 block">
-                        <div className="mb-1 text-xs text-slate-400">사용 예정/실제일</div>
-                        <DateMonthInput
-                          type="datetime-local"
-                          value={plannedAtLocal}
-                          onChange={(e) => setPlannedAtLocal(e.target.value)}
-                          className="text-sm"
-                        />
-                      </label>
-                    ) : null}
-                  </div>
-                ) : null}
+                <div className="col-span-2 grid grid-cols-2 gap-3">
+                  <label className="min-w-0">
+                    <div className="mb-1 text-xs text-slate-400">날짜(필수)</div>
+                    <DateMonthInput
+                      type="date"
+                      value={composeDayKey}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        setComposeDayKey(v);
+                      }}
+                      className="h-12 text-sm"
+                    />
+                  </label>
+                  {composeKind === "schedule" ? (
+                    <div className="min-w-0">
+                      <div className="mb-1 text-xs text-slate-400">&nbsp;</div>
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
+                          scheduleShowOnCalendar ? "border-indigo-200" : "border-slate-200"
+                        )}
+                        onClick={() => setScheduleShowOnCalendar((v) => !v)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              "inline-flex h-5 w-5 items-center justify-center rounded border",
+                              scheduleShowOnCalendar
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-slate-300 bg-white text-transparent"
+                            )}
+                            aria-hidden
+                          >
+                            ✓
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900">달력</span>
+                        </div>
+                      </button>
+                    </div>
+                  ) : composeKind === "expense" && !isTransit2 ? (
+                    <div className="min-w-0">
+                      <div className="mb-1 text-xs text-slate-400 opacity-0 select-none">&nbsp;</div>
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
+                          plannedAtEnabled ? "border-indigo-200" : "border-slate-200"
+                        )}
+                        onClick={() => setPlannedAtEnabled((v) => !v)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              "inline-flex h-5 w-5 items-center justify-center rounded border",
+                              plannedAtEnabled
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-slate-300 bg-white text-transparent"
+                            )}
+                            aria-hidden
+                          >
+                            ✓
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900">다른 날</span>
+                        </div>
+                        <svg
+                          viewBox="0 0 24 24"
+                          className={cn(
+                            "h-5 w-5 shrink-0 text-slate-400 transition-transform",
+                            plannedAtEnabled ? "rotate-180" : "rotate-0"
+                          )}
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M6 9l6 6 6-6"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      {plannedAtEnabled ? (
+                        <div className="mt-2">
+                          <DateMonthInput
+                            type="datetime-local"
+                            value={plannedAtLocal}
+                            onChange={(e) => setPlannedAtLocal(e.target.value)}
+                            className="h-12 text-sm"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div />
+                  )}
+                </div>
                 <label>
                   <div className="mb-1 text-xs text-slate-400">
                     {composeEditExpenseId ||
                     composeEditScheduleId ||
                     composeConvertFromExpenseId ||
                     composeConvertFromScheduleId
-                      ? "시작 (필수)"
+                      ? "시작(필수)"
                       : isTransitCategory
-                        ? "출발시간 (필수)"
-                        : "시작 (필수)"}
+                        ? "출발시간(필수)"
+                        : "시작(필수)"}
                   </div>
                   <input
                     value={entryStartText}
@@ -3499,10 +3598,10 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                     composeEditScheduleId ||
                     composeConvertFromExpenseId ||
                     composeConvertFromScheduleId
-                      ? "끝 (선택)"
+                      ? "끝"
                       : isTransitCategory
-                        ? "도착시간 (선택)"
-                        : "끝 (선택)"}
+                        ? "도착시간"
+                        : "끝"}
                   </div>
                   <input
                     value={entryEndText}
@@ -3514,7 +3613,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   />
                 </label>
                 <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">카테고리 (필수)</div>
+                  <div className="mb-1 text-xs text-slate-400">카테고리(필수)</div>
                   <div className="flex items-center gap-3">
                     <CategoryCardPreview category={entryCategory} />
                     <select
@@ -3566,30 +3665,73 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   />
                 ) : null}
 
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">내용 (필수)</div>
-                  <input
-                    value={entryTitle}
-                    onChange={(e) => setEntryTitle(e.target.value)}
-                    placeholder="예: 교통 이동시간 / 영화 / 헬스 / 오늘 뭐했는지"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">메모 (선택)</div>
-                  <input
-                    value={entryNote}
-                    onChange={(e) => setEntryNote(e.target.value)}
-                    placeholder="선택"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
+                {composeKind === "expense" ? (
+                  <>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">결제처(필수)</div>
+                      <input
+                        value={exMerchant}
+                        onChange={(e) => setExMerchant(e.target.value)}
+                        placeholder="예: CGV / 편의점 / 택시"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
+                      <input
+                        value={entryTitle}
+                        onChange={(e) => setEntryTitle(e.target.value)}
+                        placeholder="예: 교통 이동시간 / 영화 / 헬스 / 오늘 뭐했는지"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">세부내용</div>
+                      <input
+                        value={exDetail}
+                        onChange={(e) => setExDetail(e.target.value)}
+                        placeholder="예: 팝콘, 콜라 / 영등포→서울역"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
+                      <input
+                        inputMode="numeric"
+                        value={exAmount}
+                        onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
+                        placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">제목(필수)</div>
+                      <input
+                        value={entryTitle}
+                        onChange={(e) => setEntryTitle(e.target.value)}
+                        placeholder="예: 강남역 최가네"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
+                      <input
+                        value={entryNote}
+                        onChange={(e) => setEntryNote(e.target.value)}
+                        placeholder="예: 최가네, 할리스"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  </>
+                )}
 
                 {composeKind === "schedule" ? (
                   <>
                     <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">함께한 사람(선택)</div>
+                      <div className="mb-1 text-xs text-slate-400">함께한 사람</div>
                       <input
                         value={schedulePeopleText}
                         onChange={(e) => setSchedulePeopleText(e.target.value)}
@@ -3598,33 +3740,30 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                       />
                     </label>
                     <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
-                      <label className="flex cursor-pointer items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={scheduleShowOnCalendar}
-                          onChange={(e) => setScheduleShowOnCalendar(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                        />
-                        <span className="text-sm font-semibold text-slate-800">달력에 표기</span>
-                      </label>
-                      <div className="mt-1 text-[11px] font-semibold text-slate-500">
-                        체크된 일정만 달력 페이지에 표시돼요.
-                      </div>
-                    </div>
-                    <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
-                      <label className="flex cursor-pointer items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={scheduleWithExpense}
-                          onChange={(e) => setScheduleWithExpense(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                        />
-                        <span className="text-sm font-semibold text-slate-800">비용도 함께 기록</span>
-                      </label>
+                      <button
+                        type="button"
+                        className="flex w-full cursor-pointer items-center justify-between gap-3"
+                        onClick={() => setScheduleWithExpense((v) => !v)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              "inline-flex h-5 w-5 items-center justify-center rounded border",
+                              scheduleWithExpense
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-slate-300 bg-white text-transparent"
+                            )}
+                            aria-hidden
+                          >
+                            ✓
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900">비용도 함께 기록</span>
+                        </div>
+                      </button>
                       {scheduleWithExpense ? (
-                        <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+                        <div className="mt-3 space-y-3">
                           <label className="block">
-                            <div className="mb-1 text-xs text-slate-400">결제 시각(선택)</div>
+                            <div className="mb-1 text-xs text-slate-400">결제 시각</div>
                             <input
                               value={schedulePayTimeText}
                               onChange={(e) => setSchedulePayTimeText(e.target.value)}
@@ -3633,7 +3772,34 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                             />
                           </label>
                           <label className="block">
-                            <div className="mb-1 text-xs text-slate-400">금액 (필수)</div>
+                            <div className="mb-1 text-xs text-slate-400">결제처(필수)</div>
+                            <input
+                              value={exMerchant}
+                              onChange={(e) => setExMerchant(e.target.value)}
+                              placeholder="예: CGV / 편의점 / 택시"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
+                            <input
+                              value={scheduleExpenseTitle}
+                              onChange={(e) => setScheduleExpenseTitle(e.target.value)}
+                              placeholder="예: 점심 / 택시 / 항공권 수수료"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="mb-1 text-xs text-slate-400">세부 내용</div>
+                            <input
+                              value={exDetail}
+                              onChange={(e) => setExDetail(e.target.value)}
+                              placeholder="예: 팝콘, 콜라 / 영등포→서울역"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
                             <input
                               inputMode="numeric"
                               value={exAmount}
@@ -3644,14 +3810,14 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                           </label>
                           <div className="grid grid-cols-2 gap-2">
                             <div className="min-w-0 space-y-2">
-                              <div className="mb-1 text-xs text-slate-400">결제자</div>
+                              <div className="mb-1 text-xs text-slate-400">결제자(필수)</div>
                               <div className="flex gap-2">
                                 {(["나", "기타"] as const).map((p) => (
                                   <button
                                     key={p}
                                     type="button"
                                     className={cn(
-                                      "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                      "flex-1 rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
                                       payerPreset === p
                                         ? "border-indigo-600 bg-indigo-600 text-white"
                                         : "border-slate-200 bg-white text-slate-800"
@@ -3667,12 +3833,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                                   value={payerOther}
                                   onChange={(e) => setPayerOther(e.target.value)}
                                   placeholder="결제자 이름"
-                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                                 />
                               ) : null}
                             </div>
                             <div className="min-w-0 space-y-2">
-                              <div className="mb-1 text-xs text-slate-400">지출 유형</div>
+                              <div className="mb-1 text-xs text-slate-400">지출 유형(필수)</div>
                               <div className="flex gap-2">
                                 {[
                                   { key: "PERSONAL" as const, label: "개인" },
@@ -3682,7 +3848,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                                     key={t.key}
                                     type="button"
                                     className={cn(
-                                      "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                      "flex-1 rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
                                       expenseScope === t.key
                                         ? "border-indigo-600 bg-indigo-600 text-white"
                                         : "border-slate-200 bg-white text-slate-800"
@@ -3698,20 +3864,20 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                                   value={sharedNamesText}
                                   onChange={(e) => setSharedNamesText(e.target.value)}
                                   placeholder="함께한 사람 (쉼표로 구분)"
-                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                                 />
                               ) : null}
                             </div>
                           </div>
                           <div className="space-y-2">
-                            <div className="mb-1 text-xs text-slate-400">결제수단 (필수)</div>
+                            <div className="mb-1 text-xs text-slate-400">결제 수단(필수)</div>
                             <div className="flex flex-wrap gap-2">
                               {PAYMENT_TYPE_OPTIONS.map((opt) => (
                                 <button
                                   key={opt.key}
                                   type="button"
                                   className={cn(
-                                    "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                    "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
                                     exPaymentType === opt.key
                                       ? "border-indigo-600 bg-indigo-600 text-white"
                                       : "border-slate-200 bg-white text-slate-800"
@@ -3735,12 +3901,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                                 onChange={(e) => setExPaymentLabel(e.target.value)}
                                 placeholder={
                                   exPaymentType === "CARD"
-                                    ? "카드 이름(선택)"
+                                    ? "카드 이름"
                                     : exPaymentType === "ACCOUNT"
-                                      ? "이체 메모(선택)"
+                                      ? "이체 메모"
                                       : "기타 결제수단 이름(필수)"
                                 }
-                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                               />
                             ) : null}
                             {exPaymentType === "CARD" ? (
@@ -3754,24 +3920,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                               />
                             ) : null}
                           </div>
-                          <label className="block">
-                            <div className="mb-1 text-xs text-slate-400">결제처(선택)</div>
-                            <input
-                              value={exMerchant}
-                              onChange={(e) => setExMerchant(e.target.value)}
-                              placeholder="예: CGV / 편의점"
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                            />
-                          </label>
-                          <label className="block">
-                            <div className="mb-1 text-xs text-slate-400">세부내용(선택)</div>
-                            <input
-                              value={exDetail}
-                              onChange={(e) => setExDetail(e.target.value)}
-                              placeholder="예: 팝콘, 콜라"
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                            />
-                          </label>
+                          {/* 결제처는 카테고리 아래(필수) 입력으로 통일 */}
                         </div>
                       ) : null}
                     </div>
@@ -3780,27 +3929,16 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
                 {composeKind === "expense" ? (
                   <>
-                    <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">금액 (필수)</div>
-                      <input
-                        inputMode="numeric"
-                        value={exAmount}
-                        onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
-                        placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
-                      />
-                    </label>
-
                     <div className="col-span-2 grid grid-cols-2 gap-2">
                       <div className="min-w-0 space-y-2">
-                        <div className="mb-1 text-xs text-slate-400">결제자</div>
+                        <div className="mb-1 text-xs text-slate-400">결제자(필수)</div>
                         <div className="flex gap-2">
                           {(["나", "기타"] as const).map((p) => (
                             <button
                               key={p}
                               type="button"
                               className={cn(
-                                "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                "flex-1 rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
                                 payerPreset === p
                                   ? "border-indigo-600 bg-indigo-600 text-white"
                                   : "border-slate-200 bg-white text-slate-800"
@@ -3816,13 +3954,13 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                             value={payerOther}
                             onChange={(e) => setPayerOther(e.target.value)}
                             placeholder="결제자 이름"
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                           />
                         ) : null}
                       </div>
 
                       <div className="min-w-0 space-y-2">
-                        <div className="mb-1 text-xs text-slate-400">지출 유형</div>
+                        <div className="mb-1 text-xs text-slate-400">지출 유형(필수)</div>
                         <div className="flex gap-2">
                           {[
                             { key: "PERSONAL" as const, label: "개인" },
@@ -3832,7 +3970,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                               key={t.key}
                               type="button"
                               className={cn(
-                                "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                "flex-1 rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
                                 expenseScope === t.key
                                   ? "border-indigo-600 bg-indigo-600 text-white"
                                   : "border-slate-200 bg-white text-slate-800"
@@ -3848,21 +3986,21 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                             value={sharedNamesText}
                             onChange={(e) => setSharedNamesText(e.target.value)}
                             placeholder="함께한 사람 (쉼표로 구분) 예: 나,철수,영희"
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                           />
                         ) : null}
                       </div>
                     </div>
 
                     <div className="col-span-2 space-y-2">
-                      <div className="mb-1 text-xs text-slate-400">결제수단 (필수)</div>
+                      <div className="mb-1 text-xs text-slate-400">결제 수단(필수)</div>
                       <div className="flex flex-wrap gap-2">
                         {PAYMENT_TYPE_OPTIONS.map((opt) => (
                           <button
                             key={opt.key}
                             type="button"
                             className={cn(
-                              "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                              "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
                               exPaymentType === opt.key
                                 ? "border-indigo-600 bg-indigo-600 text-white"
                                 : "border-slate-200 bg-white text-slate-800"
@@ -3886,12 +4024,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                           onChange={(e) => setExPaymentLabel(e.target.value)}
                           placeholder={
                             exPaymentType === "CARD"
-                              ? "카드 이름(선택)"
+                              ? "카드 이름"
                               : exPaymentType === "ACCOUNT"
-                                ? "이체 메모(선택) 예: 토스/계좌"
+                                ? "이체 메모 예: 토스/계좌"
                                 : "기타 결제수단 이름(필수)"
                           }
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                         />
                       ) : null}
                       {exPaymentType === "CARD" ? (
@@ -3906,24 +4044,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                       ) : null}
                     </div>
 
-                    <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">결제처(교통1 제외 시 필수)</div>
-                      <input
-                        value={exMerchant}
-                        onChange={(e) => setExMerchant(e.target.value)}
-                        placeholder="예: CGV / 편의점 / 택시"
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                      />
-                    </label>
-                    <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">세부내용(선택)</div>
-                      <input
-                        value={exDetail}
-                        onChange={(e) => setExDetail(e.target.value)}
-                        placeholder="예: 팝콘, 콜라 / 영등포→서울역"
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                      />
-                    </label>
+                    {/* 결제처는 카테고리 아래 입력으로 이동 */}
                   </>
                 ) : null}
               </div>
@@ -4075,26 +4196,25 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 </div>
               </div>
             ) : null}
+            {expenseDetailOpen.memo ? (
+              <div className="mt-3">
+                <div className="text-xs text-slate-400">내용</div>
+                <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.memo}</div>
+              </div>
+            ) : null}
             {expenseDetailOpen.detail ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">세부내용</div>
                 <div className="mt-1 text-sm text-slate-800">
-                  {(() => {
-                    const raw = expenseDetailOpen.detail ?? "";
-                    const d = raw.trim();
-                    if (!d) return raw;
-                    // 교통2는 보통 title=출발→도착 이고 detail에 "출발→도착 · ..."로 저장되어 중복 노출될 수 있음
-                    return stripTransitRoutePrefix(raw, expenseDetailOpen.transitFrom, expenseDetailOpen.transitTo);
-                  })()}
+                  {stripTransitRoutePrefix(
+                    expenseDetailOpen.detail,
+                    expenseDetailOpen.transitFrom,
+                    expenseDetailOpen.transitTo
+                  )}
                 </div>
               </div>
             ) : null}
-            {expenseDetailOpen.memo ? (
-              <div className="mt-3">
-                <div className="text-xs text-slate-400">메모</div>
-                <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.memo}</div>
-              </div>
-            ) : null}
+            {/* 메모 입력 제거: memo는 '내용'으로 사용 */}
             {expenseDetailOpen.participants ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">함께한 사람</div>
@@ -4142,7 +4262,30 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
           title={
             parseEmojiPrefixedTitle(scheduleDetailOpen.title).content || scheduleDetailOpen.title
           }
-          subtitle={timeRangeLabel(scheduleDetailOpen.startAt, scheduleDetailOpen.endAt)}
+          subtitle={
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="inline-flex shrink-0 items-center gap-1">
+                <ClockIcon className="h-4 w-4 text-slate-300" aria-hidden="true" />
+                <span className="tabular-nums">
+                  {timeRangeLabel(scheduleDetailOpen.startAt, scheduleDetailOpen.endAt)}
+                </span>
+              </span>
+              {(() => {
+                const n = parseScheduleNote(scheduleDetailOpen.note ?? "");
+                const people = n.people.join(", ").trim();
+                if (!people) return null;
+                return (
+                  <>
+                    <span className="shrink-0">·</span>
+                    <span className="inline-flex min-w-0 max-w-full items-start gap-1">
+                      <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+                      <span className="min-w-0 break-words normal-case">{people}</span>
+                    </span>
+                  </>
+                );
+              })()}
+            </div>
+          }
           onClose={() => {
             setScheduleDetailOpen(null);
             setScheduleDetailTab("schedule");
@@ -4180,15 +4323,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             </div>
           }
         >
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-              <ClockIcon className="h-4 w-4 text-slate-400" aria-hidden="true" />
-              <span className="tabular-nums">
-                {timeRangeLabel(scheduleDetailOpen.startAt, scheduleDetailOpen.endAt)}
-              </span>
-            </div>
-          </div>
-
           <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
             <button
               type="button"

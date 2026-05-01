@@ -1,9 +1,47 @@
 import type { ReactNode } from "react";
 import type { Expense } from "../features/expenses/api";
 import type { ScheduleItem } from "../features/schedules/api";
-import { CATEGORY_GROUPS, emojiForCategory, normalizeCategory } from "../domain/categoryUi";
+import { CATEGORY_GROUPS, emojiForCategory, normalizeCategory, parseEmojiPrefixedTitle } from "../domain/categoryUi";
+import { timeRangeLabel } from "../domain/date";
+import { parseScheduleNote } from "../domain/scheduleNote";
 import { formatWon } from "../domain/settlement";
 import SettlementRow from "../components/SettlementRow";
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v6l4 2" />
+    </svg>
+  );
+}
+
+function UserIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M20 21a8 8 0 10-16 0" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
 
 export type TodayDetailViewProps = {
   header: ReactNode;
@@ -49,12 +87,32 @@ export function TodayDetailView({
   const mergedScheduleLike = [
     ...scheduleItems.map((s) => ({
       kind: "schedule" as const,
-      title: s.title,
-      startText: new Date(s.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      endText: s.endAt ? new Date(s.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
-      memo: s.note ?? ""
+      icon: (() => {
+        const parsed = parseEmojiPrefixedTitle(s.title || "");
+        return emojiForCategory(normalizeCategory(parsed.category || "기타"));
+      })(),
+      title: (() => {
+        const parsed = parseEmojiPrefixedTitle(s.title || "");
+        return parsed.content || s.title || "";
+      })(),
+      timeText: timeRangeLabel(s.startAt, s.endAt),
+      peopleText: (() => {
+        const n = parseScheduleNote(s.note ?? "");
+        return n.people.join(", ");
+      })(),
+      memoText: (() => {
+        const n = parseScheduleNote(s.note ?? "");
+        return (n.memo ?? "").trim();
+      })()
     })),
-    ...usageTransit2.map((u) => ({ kind: "usage" as const, title: u.label, startText: u.startText, endText: u.endText, memo: u.memo }))
+    ...usageTransit2.map((u) => ({
+      kind: "usage" as const,
+      icon: emojiForCategory("교통2"),
+      title: u.label,
+      timeText: u.endText ? `${u.startText}~${u.endText}` : u.startText,
+      peopleText: "",
+      memoText: u.memo
+    }))
   ];
   const byCategory = new Map<string, { category: string; count: number; amount: number }>();
   for (const e of todayExpenses) {
@@ -190,22 +248,38 @@ export function TodayDetailView({
                   mergedScheduleLike.map((s, idx) => (
                     <div key={`${s.kind}-${idx}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0 text-sm font-semibold text-slate-900">{s.title}</div>
+                        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900">
+                          <span className="shrink-0" aria-hidden>
+                            {s.icon}
+                          </span>
+                          <span className="min-w-0 break-words">{s.title}</span>
+                        </div>
                         {s.kind === "usage" ? (
                           <div className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                             이용
                           </div>
                         ) : null}
                       </div>
-                      <div className="mt-1 text-xs font-semibold text-slate-500">
-                        {s.startText}
-                        {s.endText ? ` ~ ${s.endText}` : ""}
+                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-400">
+                        <span className="inline-flex shrink-0 items-center gap-1">
+                          <ClockIcon className="h-4 w-4 text-slate-300" />
+                          <span className="tabular-nums">{s.timeText}</span>
+                        </span>
+                        {s.peopleText ? (
+                          <>
+                            <span className="shrink-0">·</span>
+                            <span className="inline-flex min-w-0 max-w-full items-start gap-1">
+                              <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+                              <span className="min-w-0 break-words normal-case">{s.peopleText}</span>
+                            </span>
+                          </>
+                        ) : null}
                       </div>
-                      {s.kind === "usage" && s.memo ? (
+                      {s.kind === "usage" && s.memoText ? (
                         <div className="mt-2 rounded-xl bg-slate-100/70 px-3 py-2 text-xs font-semibold text-slate-600">
                           <span className="text-slate-500">이용일 메모</span>
                           <span className="text-slate-400"> · </span>
-                          <span className="break-words">{s.memo}</span>
+                          <span className="break-words">{s.memoText}</span>
                         </div>
                       ) : null}
                     </div>

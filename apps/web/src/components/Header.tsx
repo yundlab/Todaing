@@ -11,9 +11,6 @@ export default function Header(props: {
   onPick: (_next: Date) => void;
   onPrev: () => void;
   onNext: () => void;
-  /** 오늘/월 상세일 때 홈으로 닫기 버튼 표시 */
-  showDetailClose?: boolean;
-  onDetailClose?: () => void;
   rightSlot?: ReactNode;
 }) {
   const {
@@ -24,8 +21,6 @@ export default function Header(props: {
     onPick,
     onPrev,
     onNext,
-    showDetailClose,
-    onDetailClose,
     rightSlot
   } = props;
 
@@ -118,17 +113,6 @@ export default function Header(props: {
 
           <div className="flex items-center justify-end gap-1">
             {rightSlot}
-            {showDetailClose ? (
-              <button
-                type="button"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 hover:bg-slate-100 active:scale-[0.99]"
-                onClick={onDetailClose}
-                aria-label="닫기"
-                title="닫기"
-              >
-                <span className="text-lg leading-none">×</span>
-              </button>
-            ) : null}
           </div>
         </div>
       </div>

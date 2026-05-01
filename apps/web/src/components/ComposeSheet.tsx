@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 export default function ComposeSheet(props: {
   open: boolean;
   title: ReactNode;
-  subtitle?: string | null;
+  subtitle?: ReactNode | null;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -20,7 +20,7 @@ export default function ComposeSheet(props: {
           <div>
             <div className="text-sm font-semibold">{props.title}</div>
             {props.subtitle ? (
-              <div className="mt-1 text-xs text-slate-400">{props.subtitle}</div>
+              <div className="mt-1 text-xs font-semibold text-slate-400">{props.subtitle}</div>
             ) : null}
           </div>
           <button
