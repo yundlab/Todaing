@@ -27,6 +27,9 @@ import StationSearchSheet, { type StationSearchTarget } from "../components/Stat
 import ComposeSheet from "../components/ComposeSheet";
 import ExpenseCard from "../components/ExpenseCard";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
+import { useExpenseComposeForm } from "../hooks/useExpenseComposeForm";
+import { useExpenseEditForm } from "../hooks/useExpenseEditForm";
+import { useScheduleEditForm } from "../hooks/useScheduleEditForm";
 import {
   dateFromSlotMinutes,
   daysInMonth,
@@ -852,47 +855,91 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState<ScheduleItem | null>(null);
   const [scheduleEditOpen, setScheduleEditOpen] = useState<ScheduleItem | null>(null);
 
-  const [entryStartText, setEntryStartText] = useState("09:00");
-  const [entryEndText, setEntryEndText] = useState("09:30");
-  const [entryCategory, setEntryCategory] = useState("식비");
-  const [entryTitle, setEntryTitle] = useState("");
-  const [entryNote, setEntryNote] = useState("");
+  const {
+    entryStartText,
+    setEntryStartText,
+    entryEndText,
+    setEntryEndText,
+    entryCategory,
+    setEntryCategory,
+    entryTitle,
+    setEntryTitle,
+    entryNote,
+    setEntryNote,
+    exMerchant,
+    setExMerchant,
+    exDetail,
+    setExDetail,
+    exAmount,
+    setExAmount,
+    exPaymentType,
+    setExPaymentType,
+    exPaymentLabel,
+    setExPaymentLabel,
+    payerPreset,
+    setPayerPreset,
+    payerOther,
+    setPayerOther,
+    expenseScope,
+    setExpenseScope,
+    sharedNamesText,
+    setSharedNamesText,
+    reset: resetComposeForm
+  } = useExpenseComposeForm();
 
-  const [exMerchant, setExMerchant] = useState("");
-  const [exDetail, setExDetail] = useState("");
-  const [exAmount, setExAmount] = useState("");
-  const [exPaymentType, setExPaymentType] = useState<Expense["paymentType"]>("CARD");
-  const [exPaymentLabel, setExPaymentLabel] = useState("");
-  const [payerPreset, setPayerPreset] = useState<"나" | "기타">("나");
-  const [payerOther, setPayerOther] = useState("");
-  const [expenseScope, setExpenseScope] = useState<"PERSONAL" | "SHARED">("PERSONAL");
-  const [sharedNamesText, setSharedNamesText] = useState("");
+  const {
+    editAmount,
+    setEditAmount,
+    editCategory,
+    setEditCategory,
+    editMerchant,
+    setEditMerchant,
+    editDetail,
+    setEditDetail,
+    editTimeText,
+    setEditTimeText,
+    editEndTimeText,
+    setEditEndTimeText,
+    editPaymentType,
+    setEditPaymentType,
+    editPaymentLabel,
+    setEditPaymentLabel,
+    editPayerPreset,
+    setEditPayerPreset,
+    editPayerOther,
+    setEditPayerOther,
+    editExpenseScope,
+    setEditExpenseScope,
+    editSharedNamesText,
+    setEditSharedNamesText
+  } = useExpenseEditForm();
 
-  const [editAmount, setEditAmount] = useState("");
-  const [editCategory, setEditCategory] = useState("기타");
-  const [editMerchant, setEditMerchant] = useState("");
-  const [editDetail, setEditDetail] = useState("");
-  const [editTimeText, setEditTimeText] = useState("09:00");
-  const [editEndTimeText, setEditEndTimeText] = useState("09:30");
-  const [editPaymentType, setEditPaymentType] = useState<Expense["paymentType"]>("CARD");
-  const [editPaymentLabel, setEditPaymentLabel] = useState("");
-  const [editPayerPreset, setEditPayerPreset] = useState<"나" | "기타">("나");
-  const [editPayerOther, setEditPayerOther] = useState("");
-  const [editExpenseScope, setEditExpenseScope] = useState<"PERSONAL" | "SHARED">("PERSONAL");
-  const [editSharedNamesText, setEditSharedNamesText] = useState("");
-
-  const [editSchedStart, setEditSchedStart] = useState("09:00");
-  const [editSchedEnd, setEditSchedEnd] = useState("09:30");
-  const [editSchedCategory, setEditSchedCategory] = useState("기타");
-  const [editSchedTitle, setEditSchedTitle] = useState("");
-  const [editSchedNote, setEditSchedNote] = useState("");
-  const [editSchedAmount, setEditSchedAmount] = useState("");
-  const [editSchedPaymentType, setEditSchedPaymentType] = useState<Expense["paymentType"]>("CARD");
-  const [editSchedPaymentLabel, setEditSchedPaymentLabel] = useState("");
-  const [editSchedPayerPreset, setEditSchedPayerPreset] = useState<"나" | "기타">("나");
-  const [editSchedPayerOther, setEditSchedPayerOther] = useState("");
-  const [editSchedExpenseScope, setEditSchedExpenseScope] = useState<"PERSONAL" | "SHARED">("PERSONAL");
-  const [editSchedSharedNamesText, setEditSchedSharedNamesText] = useState("");
+  const {
+    editSchedStart,
+    setEditSchedStart,
+    editSchedEnd,
+    setEditSchedEnd,
+    editSchedCategory,
+    setEditSchedCategory,
+    editSchedTitle,
+    setEditSchedTitle,
+    editSchedNote,
+    setEditSchedNote,
+    editSchedAmount,
+    setEditSchedAmount,
+    editSchedPaymentType,
+    setEditSchedPaymentType,
+    editSchedPaymentLabel,
+    setEditSchedPaymentLabel,
+    editSchedPayerPreset,
+    setEditSchedPayerPreset,
+    editSchedPayerOther,
+    setEditSchedPayerOther,
+    editSchedExpenseScope,
+    setEditSchedExpenseScope,
+    editSchedSharedNamesText,
+    setEditSchedSharedNamesText
+  } = useScheduleEditForm();
   // 교통2 (기차/시외/택시/비행기) - 단일 구간
   const [exTransitMode, setExTransitMode] = useState<string>("🚆"); // 교통2: 🚆🚍🚖✈️
   const [exTransitFromText, setExTransitFromText] = useState<string>("");
@@ -1702,17 +1749,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
               });
 
               setComposeOpen(false);
-              setEntryTitle("");
-              setEntryNote("");
-              setExAmount("");
-              setExMerchant("");
-              setExDetail("");
-              setExPaymentType("CARD");
-              setExPaymentLabel("");
-              setPayerPreset("나");
-              setPayerOther("");
-              setExpenseScope("PERSONAL");
-              setSharedNamesText("");
+              resetComposeForm();
             }}
           >
             저장
