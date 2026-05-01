@@ -1,5 +1,4 @@
-import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { createSchedule, deleteSchedule, listMonthSchedules, listSchedules, updateSchedule } from "./api";
 
 async function invalidateSchedules(qc: QueryClient) {

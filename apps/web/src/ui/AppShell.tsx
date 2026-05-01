@@ -12,6 +12,7 @@ import {
 import {
   useCreateSchedule,
   useDeleteSchedule,
+  useMonthSchedules,
   useSchedules,
   useUpdateSchedule
 } from "../features/schedules/queries";
@@ -67,10 +68,48 @@ import {
   normalizeCategory,
   parseEmojiPrefixedTitle
 } from "../domain/categoryUi";
+import {
+  AGGREGATE_MODE_LS_KEY,
+  expenseCashflowAllocations,
+  spendByDayForCalendar,
+  sumExpensesForMonth,
+  sumExpensesForMonthToDate,
+  type AggregateMode
+} from "../domain/installment";
 import { MonthDetailView } from "../pages/MonthDetailView";
 import { TodayDetailView } from "../pages/TodayDetailView";
 
 type Tint = { bg: string; border: string; text: string };
+
+function formatAmountInputWithCommas(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  const digits = trimmed.replaceAll(",", "").replaceAll(" ", "").replace(/[^\d]/g, "");
+  if (!digits) return "";
+  const n = Number(digits);
+  if (!Number.isFinite(n)) return "";
+  return Math.trunc(n).toLocaleString();
+}
+
+function stripTransitRoutePrefix(detail: string, transitFrom: string | null, transitTo: string | null) {
+  const d = (detail ?? "").trim();
+  if (!d) return detail;
+  const from = (transitFrom ?? "").trim();
+  const to = (transitTo ?? "").trim();
+  const route = from && to ? `${from} → ${to}` : "";
+  if (!route) return detail;
+  const prefix1 = `${route} · `;
+  const prefix2 = `${route}·`;
+  if (d.startsWith(prefix1)) return d.slice(prefix1.length);
+  if (d.startsWith(prefix2)) return d.slice(prefix2.length);
+  return detail;
+}
+
+function isUsageDayDifferent(e: Expense, currentDayKey: string) {
+  if (!e.plannedAt) return false;
+  const plannedDay = yyyyMmDdLocal(new Date(e.plannedAt));
+  return plannedDay !== currentDayKey;
+}
 
 const GROUP_TINT: Record<"fixed" | "food" | "optionalFixed" | "living" | "other", Tint> = {
   // 1) 교통1, 교통2, 통신, 보험
@@ -105,7 +144,7 @@ const CATEGORY_TINT_OVERRIDE: Record<string, Tint> = {
 
 function groupForCategory(category: string) {
   if (["교통1", "교통2", "통신", "보험"].includes(category)) return "fixed";
-  if (["식비", "간식"].includes(category)) return "food";
+  if (["식사", "간식"].includes(category)) return "food";
   if (["담배", "구독"].includes(category)) return "optionalFixed";
   if (["생활", "병원", "선물"].includes(category)) return "living";
   return "other";
@@ -166,6 +205,16 @@ function chipClass(variant: "gray" | "orange" | "teal") {
   if (variant === "orange") return "bg-orange-50 text-orange-700 border-orange-100";
   if (variant === "teal") return "bg-indigo-50 text-indigo-700 border-indigo-100";
   return "bg-slate-100 text-slate-600 border-slate-200";
+}
+
+function monthIndexDiff(fromMonthKey: string, toMonthKey: string) {
+  // YYYY-MM
+  const fy = Number(fromMonthKey.slice(0, 4));
+  const fm = Number(fromMonthKey.slice(5, 7));
+  const ty = Number(toMonthKey.slice(0, 4));
+  const tm = Number(toMonthKey.slice(5, 7));
+  if (!Number.isFinite(fy) || !Number.isFinite(fm) || !Number.isFinite(ty) || !Number.isFinite(tm)) return 0;
+  return (ty - fy) * 12 + (tm - fm);
 }
 
 
@@ -269,10 +318,6 @@ function CardInstallmentFields(props: {
     </div>
   );
 }
-
-/** 메인 예산 카드 — 오늘/이번달 지출 상세 진입 버튼 공통 스타일 */
-const BUDGET_DETAIL_LINK_BTN =
-  "shrink-0 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm active:scale-[0.99]";
 
 function ClockIcon({ className }: { className?: string }) {
   return (
@@ -605,65 +650,219 @@ function Transit1Fields({
   );
 }
 
-function Transit2Fields({
+function AggregateModeToggle({
   mode,
-  setMode,
-  fromText,
-  setFromText,
-  toText,
-  setToText
+  onChange,
+  size = "sm"
 }: {
-  mode: string;
+  mode: AggregateMode;
    
-  setMode: (_m: string) => void;
+  onChange: (_next: AggregateMode) => void;
+  size?: "sm" | "xs";
+}) {
+  const padding = size === "xs" ? "px-2 py-0.5" : "px-2.5 py-1";
+  const text = size === "xs" ? "text-[10px]" : "text-[11px]";
+  return (
+    <div
+      className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 p-0.5"
+      role="tablist"
+      aria-label="합계 기준"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "usage"}
+        className={cn(
+          "rounded-full font-semibold tabular-nums tracking-tight transition",
+          padding,
+          text,
+          mode === "usage"
+            ? "bg-white text-slate-900 shadow-sm"
+            : "text-slate-500 hover:text-slate-700"
+        )}
+        onClick={() => onChange("usage")}
+      >
+        사용액
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "cashflow"}
+        className={cn(
+          "rounded-full font-semibold tabular-nums tracking-tight transition",
+          padding,
+          text,
+          mode === "cashflow"
+            ? "bg-white text-slate-900 shadow-sm"
+            : "text-slate-500 hover:text-slate-700"
+        )}
+        onClick={() => onChange("cashflow")}
+      >
+        실출금
+      </button>
+    </div>
+  );
+}
+
+function formatCalendarWon(n: number) {
+  const v = Math.round(Number(n) || 0);
+  if (!Number.isFinite(v) || v === 0) return "";
+  const abs = Math.abs(v);
+  // Compact for narrow calendar cells
+  if (abs >= 1_000_000) {
+    const x = Math.round((v / 10_000) * 10) / 10; // 만원 단위, 소수 1자리
+    return `${x}만`;
+  }
+  if (abs >= 100_000) {
+    const x = Math.round((v / 10_000) * 10) / 10; // 54.8만
+    return `${x}만`;
+  }
+  return v.toLocaleString();
+}
+
+type Transit2SegmentDraft = {
+  dayKey: string; // YYYY-MM-DD (usage day)
+  start: string; // HH:mm
+  end: string; // HH:mm (optional)
   fromText: string;
-   
-  setFromText: (_v: string) => void;
   toText: string;
-   
-  setToText: (_v: string) => void;
+  mode: string; // 🚆🚍🚖✈️
+  memoText: string;
+};
+
+function Transit2Fields({
+  segments,
+  setSegments
+}: {
+  segments: Transit2SegmentDraft[];
+  setSegments: (_next: Transit2SegmentDraft[]) => void;
 }) {
   return (
     <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold text-slate-600">교통2 (기차/시외버스/택시/비행기)</div>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <label>
-          <div className="mb-1 text-xs text-slate-500">출발지</div>
-          <input
-            value={fromText}
-            onChange={(e) => setFromText(e.target.value)}
-            placeholder="예: 서울역"
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-          />
-        </label>
-        <label>
-          <div className="mb-1 text-xs text-slate-500">도착지</div>
-          <input
-            value={toText}
-            onChange={(e) => setToText(e.target.value)}
-            placeholder="예: 부산역"
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-          />
-        </label>
-      </div>
-      <div className="mt-2">
-        <div className="mb-1 text-xs text-slate-500">수단</div>
-        <div className="flex gap-2">
-          {["🚆", "🚍", "🚖", "✈️"].map((m) => (
-            <button
-              key={m}
-              className={`h-12 w-12 rounded-xl border text-xl ${
-                mode === m
-                  ? "border-indigo-600 bg-indigo-600 text-white"
-                  : "border-slate-200 bg-white text-slate-900"
-              }`}
-              onClick={() => setMode(m)}
-              aria-label={`교통수단 ${m}`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
+      <div className="mt-3 space-y-3">
+        {segments.map((seg, idx) => (
+          <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-slate-600">구간 {idx + 1}</div>
+              {segments.length > 1 ? (
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-rose-700"
+                  onClick={() => setSegments(segments.filter((_, i) => i !== idx))}
+                >
+                  삭제
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="col-span-2">
+                <div className="mb-1 text-xs text-slate-500">사용일</div>
+                <input
+                  type="date"
+                  value={seg.dayKey}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    setSegments(segments.map((s, i) => (i === idx ? { ...s, dayKey: v } : s)));
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+              <label>
+                <div className="mb-1 text-xs text-slate-500">출발시간</div>
+                <input
+                  value={seg.start}
+                  onChange={(e) =>
+                    setSegments(segments.map((s, i) => (i === idx ? { ...s, start: e.target.value } : s)))
+                  }
+                  placeholder="예: 15:00"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+              <label>
+                <div className="mb-1 text-xs text-slate-500">도착시간</div>
+                <input
+                  value={seg.end}
+                  onChange={(e) =>
+                    setSegments(segments.map((s, i) => (i === idx ? { ...s, end: e.target.value } : s)))
+                  }
+                  placeholder="선택"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+              <label>
+                <div className="mb-1 text-xs text-slate-500">출발지</div>
+                <input
+                  value={seg.fromText}
+                  onChange={(e) =>
+                    setSegments(segments.map((s, i) => (i === idx ? { ...s, fromText: e.target.value } : s)))
+                  }
+                  placeholder="예: 김포"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+              <label>
+                <div className="mb-1 text-xs text-slate-500">도착지</div>
+                <input
+                  value={seg.toText}
+                  onChange={(e) =>
+                    setSegments(segments.map((s, i) => (i === idx ? { ...s, toText: e.target.value } : s)))
+                  }
+                  placeholder="예: 도쿄(하네다)"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+              <label className="col-span-2">
+                <div className="mb-1 text-xs text-slate-500">메모(선택)</div>
+                <input
+                  value={seg.memoText}
+                  onChange={(e) =>
+                    setSegments(segments.map((s, i) => (i === idx ? { ...s, memoText: e.target.value } : s)))
+                  }
+                  placeholder="예: 항공편 / 좌석 / 수하물"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+            </div>
+
+            <div className="mt-2">
+              <div className="mb-1 text-xs text-slate-500">수단</div>
+              <div className="flex gap-2">
+                {["🚆", "🚍", "🚖", "✈️"].map((m) => (
+                  <button
+                    type="button"
+                    key={m}
+                    className={`h-11 w-11 rounded-xl border text-xl ${
+                      seg.mode === m
+                        ? "border-indigo-600 bg-indigo-600 text-white"
+                        : "border-slate-200 bg-white text-slate-900"
+                    }`}
+                    onClick={() => setSegments(segments.map((s, i) => (i === idx ? { ...s, mode: m } : s)))}
+                    aria-label={`교통수단 ${m}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-800 shadow-sm"
+          onClick={() => {
+            const baseDay = segments[segments.length - 1]?.dayKey ?? yyyyMmDdLocal(new Date());
+            setSegments([
+              ...segments,
+              { dayKey: baseDay, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
+            ]);
+          }}
+        >
+          + 구간 추가(출국/입국)
+        </button>
       </div>
     </div>
   );
@@ -684,6 +883,15 @@ type TimelineItem =
       kind: "expense";
       startMs: number;
       expense: Expense;
+    }
+  | {
+      kind: "usage-expense";
+      startMs: number;
+      expense: Expense;
+      label: string;
+      startText: string;
+      endText: string;
+      usageMemo: string;
     };
 
 /** 일정 시작~끝 구간 안에 occurredAt이 들어오는 지출 (일정+비용 동시 기록 등). 끝 시간 없으면 해당 날 23:59:59까지. */
@@ -713,7 +921,7 @@ function parseMainDayQuery(raw: string | null): Date | null {
   return d;
 }
 
-export default function App({ view }: { view: "main" | "today" | "month" }) {
+export default function App({ view }: { view: "main" | "today" | "month" | "calendar" }) {
   const navigate = useNavigate();
   const params = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -800,12 +1008,28 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const [settlementSheetOpen, setSettlementSheetOpen] = useState(false);
   const todayExpenseDetailOpen = view === "today";
   const monthExpenseDetailOpen = view === "month";
+  const calendarOpen = view === "calendar";
   const calendarInputRef = useRef<HTMLInputElement>(null!);
   const [legacyBudgetFallback] = useState(() => readLegacyMonthlyBudgetWonFromStorage());
   const [budgetByYm] = useLocalStorageState<Record<string, number>>(MONTHLY_BUDGET_BY_YM_LS_KEY, {}, {
     parse: parseMonthlyBudgetByYm,
     serialize: serializeMonthlyBudgetByYm
   });
+
+  const [aggregateMode, setAggregateMode] = useLocalStorageState<AggregateMode>(
+    AGGREGATE_MODE_LS_KEY,
+    "usage",
+    {
+      parse: (raw) => {
+        try {
+          const v = JSON.parse(raw);
+          return v === "cashflow" ? "cashflow" : "usage";
+        } catch {
+          return "usage";
+        }
+      }
+    }
+  );
 
   const [settledNetByPeriodKey, setSettledNetByPeriodKey] = useLocalStorageState<
     Record<string, string[]>
@@ -876,7 +1100,8 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       openSettlementLog(day, other, false);
       return;
     }
-    toggleNetSettledForDay(day, other);
+    // 미완료 → 기록 입력 다이얼로그 먼저 열고, 저장 시 정산 완료 처리
+    openSettlementLog(day, other, true);
   };
 
   const isExpenseNetSettledForDay = (day: string, e: Expense, me: string) => {
@@ -911,6 +1136,13 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         return d;
       }
     }
+    if (view === "calendar" && typeof params.month === "string") {
+      const d = new Date(`${params.month}-01T00:00:00`);
+      if (!Number.isNaN(d.getTime())) {
+        d.setHours(0, 0, 0, 0);
+        return d;
+      }
+    }
     if (view === "main") {
       const fromQuery = parseMainDayQuery(mainDayQuery);
       if (fromQuery) return fromQuery;
@@ -925,6 +1157,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       const x = new Date(d);
       x.setHours(0, 0, 0, 0);
       if (view === "month") navigate(`/month/${yyyyMmLocal(x)}`);
+      else if (view === "calendar") navigate(`/calendar/${yyyyMmLocal(x)}`);
       else if (view === "today") navigate(`/today/${yyyyMmDdLocal(x)}`);
       else {
         const key = yyyyMmDdLocal(x);
@@ -953,6 +1186,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   }, [selectedDay]);
 
   const { data: scheduleData, error: scheduleError } = useSchedules(dayKey);
+  const { data: monthSchedulesData } = useMonthSchedules(monthKey, { onlyCalendar: calendarOpen });
   const { data: todaySummary } = useExpenseSummary(dayKey);
   useMonthlyExpenseSummary(monthKey);
 
@@ -986,6 +1220,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const [scheduleWithExpense, setScheduleWithExpense] = useState(false);
   const [schedulePayTimeText, setSchedulePayTimeText] = useState("");
   const [schedulePeopleText, setSchedulePeopleText] = useState("");
+  const [scheduleShowOnCalendar, setScheduleShowOnCalendar] = useState(false);
 
   const [expenseDetailOpen, setExpenseDetailOpen] = useState<Expense | null>(null);
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState<ScheduleItem | null>(null);
@@ -1043,12 +1278,20 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     setScheduleWithExpense(false);
     setSchedulePayTimeText("");
     setSchedulePeopleText("");
+    setScheduleShowOnCalendar(false);
+    setExTransitMode("🚆");
+    setExTransitFromText("");
+    setExTransitToText("");
+    setTransit2SegmentsDraft([{ dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }]);
     resetComposeForm();
-  }, [resetComposeForm]);
+  }, [resetComposeForm, dayKey]);
   // 교통2 (기차/시외/택시/비행기) - 단일 구간
   const [exTransitMode, setExTransitMode] = useState<string>("🚆"); // 교통2: 🚆🚍🚖✈️
   const [exTransitFromText, setExTransitFromText] = useState<string>("");
   const [exTransitToText, setExTransitToText] = useState<string>("");
+  const [transit2SegmentsDraft, setTransit2SegmentsDraft] = useState<Transit2SegmentDraft[]>(() => [
+    { dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
+  ]);
 
   // 교통1 (대중교통) - 다구간(환승) 지원
   const [transitLegs, setTransitLegs] = useState<TransitLeg[]>(() => [
@@ -1076,24 +1319,83 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       .sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
   }, [expensesData, dayKey]);
 
+  const resolveOriginalExpense = useCallback(
+    (e: Expense) => {
+      const id = String(e.id || "");
+      const marker = "::cashflow::";
+      if (!id.includes(marker)) return e;
+      const originalId = id.split(marker)[0] ?? id;
+      const all = expensesData?.items ?? [];
+      return all.find((x) => x.id === originalId) ?? e;
+    },
+    [expensesData?.items]
+  );
+
+  const todayExpensesDisplay = useMemo(() => {
+    if (aggregateMode !== "cashflow") return todayExpenses;
+    const all = expensesData?.items ?? [];
+    const targetMonthKey = yyyyMmLocal(new Date(`${dayKey}T00:00:00`));
+    const targetYear = Number(targetMonthKey.slice(0, 4));
+    const targetMonthIdx = Number(targetMonthKey.slice(5, 7)) - 1;
+    const dayNum = Number(dayKey.slice(8, 10));
+
+    const out: Expense[] = [];
+    for (const e of all) {
+      const occurredAt = new Date(e.occurredAt);
+      const isInstallment =
+        e.paymentType === "CARD" && !!e.installment && !!e.installmentMonths && e.installmentMonths >= 2;
+
+      if (!isInstallment) {
+        if (yyyyMmDdLocal(occurredAt) === dayKey) out.push(e);
+        continue;
+      }
+
+      // For installment: show monthly split on the same day-of-month (clamped) for each month in the split period.
+      const allocs = expenseCashflowAllocations(e);
+      const hit = allocs.find((a) => a.monthKey === targetMonthKey);
+      if (!hit || hit.amount <= 0) continue;
+
+      // Only show on the "same day-of-month" as the original payment day (clamped to last day of month).
+      const originalDay = occurredAt.getDate();
+      const targetLastDay = new Date(targetYear, targetMonthIdx + 1, 0).getDate();
+      const anchorDay = Math.max(1, Math.min(targetLastDay, originalDay));
+      if (dayNum !== anchorDay) continue;
+
+      // Build virtual expense for display
+      const virtDate = new Date(targetYear, targetMonthIdx, anchorDay, occurredAt.getHours(), occurredAt.getMinutes());
+      const virt: Expense = {
+        ...e,
+        id: `${e.id}::cashflow::${targetMonthKey}`,
+        amount: hit.amount,
+        occurredAt: virtDate.toISOString(),
+        // keep endAt null for a simpler card
+        endAt: null
+      };
+      out.push(virt);
+    }
+    return out.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
+  }, [aggregateMode, dayKey, expensesData?.items, todayExpenses]);
+
   function fillComposeFromExpense(e: Expense) {
+    const base = resolveOriginalExpense(e);
     setComposeEditScheduleId(null);
-    setComposeEditExpenseId(e.id);
-    setComposeDayKey(yyyyMmDdLocal(new Date(e.occurredAt)));
+    setComposeEditExpenseId(base.id);
+    setComposeDayKey(yyyyMmDdLocal(new Date(base.occurredAt)));
     setComposeKind("expense");
     setScheduleWithExpense(false);
     setSchedulePayTimeText("");
     setSchedulePeopleText("");
-    const od = new Date(e.occurredAt);
+    setScheduleShowOnCalendar(false);
+    const od = new Date(base.occurredAt);
     setEntryStartText(`${pad2(od.getHours())}:${pad2(od.getMinutes())}`);
-    if (e.endAt) {
-      const ed = new Date(e.endAt);
+    if (base.endAt) {
+      const ed = new Date(base.endAt);
       setEntryEndText(`${pad2(ed.getHours())}:${pad2(ed.getMinutes())}`);
     } else {
       setEntryEndText("");
     }
-    setEntryCategory(e.category);
-    const rawDetail = e.detail?.trim() ?? "";
+    setEntryCategory(base.category);
+    const rawDetail = base.detail?.trim() ?? "";
     if (rawDetail.includes(" · ")) {
       const idx = rawDetail.indexOf(" · ");
       setEntryTitle(rawDetail.slice(0, idx));
@@ -1102,36 +1404,36 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       setEntryTitle("");
       setExDetail(rawDetail);
     }
-    setExMerchant(e.merchant ?? "");
-    setEntryNote(e.memo ?? "");
-    setExAmount(String(e.amount));
-    setExPaymentType(e.paymentType);
-    setExPaymentLabel(e.paymentMethodLabel ?? "");
-    setExInstallment(e.paymentType === "CARD" && !!e.installment);
+    setExMerchant(base.merchant ?? "");
+    setEntryNote(base.memo ?? "");
+    setExAmount(formatAmountInputWithCommas(String(base.amount)));
+    setExPaymentType(base.paymentType);
+    setExPaymentLabel(base.paymentMethodLabel ?? "");
+    setExInstallment(base.paymentType === "CARD" && !!base.installment);
     setExInstallmentMonths(
-      e.paymentType === "CARD" &&
-        e.installment &&
-        e.installmentMonths != null &&
-        e.installmentMonths >= 2 &&
-        e.installmentMonths <= 36
-        ? e.installmentMonths
+      base.paymentType === "CARD" &&
+        base.installment &&
+        base.installmentMonths != null &&
+        base.installmentMonths >= 2 &&
+        base.installmentMonths <= 36
+        ? base.installmentMonths
         : 2
     );
     setExInstallmentNoInterest(
-      e.paymentType === "CARD" && !!e.installment && !!e.installmentNoInterest
+      base.paymentType === "CARD" && !!base.installment && !!base.installmentNoInterest
     );
-    const owner = e.paymentOwner ?? "나";
+    const owner = base.paymentOwner ?? "나";
     setPayerPreset(owner === "나" ? "나" : "기타");
     setPayerOther(owner === "나" ? "" : owner);
-    setExpenseScope(e.scope ?? "PERSONAL");
+    setExpenseScope(base.scope ?? "PERSONAL");
     setSharedNamesText(
-      Array.isArray(e.participants) ? (e.participants as unknown[]).map(String).join(", ") : ""
+      Array.isArray(base.participants) ? (base.participants as unknown[]).map(String).join(", ") : ""
     );
 
     // plannedAt 복원: occurredAt과 다를 때만 토글 ON, datetime-local 입력값 채움
-    if (e.plannedAt) {
-      const planned = new Date(e.plannedAt);
-      const occurred = new Date(e.occurredAt);
+    if (base.plannedAt) {
+      const planned = new Date(base.plannedAt);
+      const occurred = new Date(base.occurredAt);
       const sameMoment = planned.getTime() === occurred.getTime();
       if (!sameMoment && !Number.isNaN(planned.getTime())) {
         setPlannedAtEnabled(true);
@@ -1150,8 +1452,8 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       setPlannedAtLocal("");
     }
 
-    if (normalizeCategory(e.category) === "교통1") {
-      const seg = e.transitSegments;
+    if (normalizeCategory(base.category) === "교통1") {
+      const seg = base.transitSegments;
       if (Array.isArray(seg) && seg.length) {
         setTransitLegs(() => {
           const mapped = seg
@@ -1204,20 +1506,47 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
       ]);
     }
-    if (normalizeCategory(e.category) === "교통2") {
-      const seg0 = Array.isArray(e.transitSegments) && e.transitSegments.length ? (e.transitSegments[0] as any) : null;
-      const mode = (e.transitMode ?? (typeof seg0?.mode === "string" ? String(seg0.mode) : "")).trim() || "🚆";
-      const from =
-        (e.transitFrom ?? (typeof seg0?.from === "string" ? String(seg0.from) : "")).trim();
-      const to =
-        (e.transitTo ?? (typeof seg0?.to === "string" ? String(seg0.to) : "")).trim();
-      setExTransitMode(mode);
-      setExTransitFromText(from);
-      setExTransitToText(to);
+    if (normalizeCategory(base.category) === "교통2") {
+      const seg = base.transitSegments;
+      const occurredDayKey = yyyyMmDdLocal(new Date(base.occurredAt));
+      if (Array.isArray(seg) && seg.length && typeof seg[0] === "object") {
+        const mapped = seg
+          .map((s: any) => {
+            const dayKeySeg = typeof s?.dayKey === "string" ? s.dayKey : occurredDayKey;
+            const start = typeof s?.start === "string" ? s.start : "";
+            const end = typeof s?.end === "string" ? s.end : "";
+            const fromText = typeof s?.from === "string" ? s.from : (base.transitFrom ?? "");
+            const toText = typeof s?.to === "string" ? s.to : (base.transitTo ?? "");
+            const mode = typeof s?.mode === "string" ? s.mode : (base.transitMode ?? "🚆");
+            const memoText = typeof s?.memo === "string" ? s.memo : "";
+            return { dayKey: dayKeySeg, start, end, fromText, toText, mode, memoText };
+          })
+          .filter(Boolean) as Transit2SegmentDraft[];
+
+        setTransit2SegmentsDraft(
+          mapped.length
+            ? mapped
+            : [{ dayKey: occurredDayKey, start: "", end: "", fromText: e.transitFrom ?? "", toText: e.transitTo ?? "", mode: e.transitMode ?? "🚆", memoText: "" }]
+        );
+
+        const first = mapped[0];
+        setExTransitMode(first?.mode ?? base.transitMode ?? "🚆");
+        setExTransitFromText(first?.fromText ?? base.transitFrom ?? "");
+        setExTransitToText(first?.toText ?? base.transitTo ?? "");
+      } else {
+        const mode = (base.transitMode ?? "").trim() || "🚆";
+        const from = (base.transitFrom ?? "").trim();
+        const to = (e.transitTo ?? "").trim();
+        setExTransitMode(mode);
+        setExTransitFromText(from);
+        setExTransitToText(to);
+        setTransit2SegmentsDraft([{ dayKey: occurredDayKey, start: "", end: "", fromText: from, toText: to, mode, memoText: "" }]);
+      }
     } else {
       setExTransitMode("🚆");
       setExTransitFromText("");
       setExTransitToText("");
+      setTransit2SegmentsDraft([{ dayKey: yyyyMmDdLocal(new Date(e.occurredAt)), start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }]);
     }
   }
 
@@ -1228,6 +1557,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     setComposeKind("schedule");
     setScheduleWithExpense(false);
     setSchedulePayTimeText("");
+    setScheduleShowOnCalendar(Boolean(full.showOnCalendar));
 
     const s = new Date(full.startAt);
     const startHhMm = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
@@ -1365,29 +1695,21 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
 
   const scheduleDetailLinkedExpenses = useMemo(() => {
     if (!scheduleDetailOpen) return [];
-    return expensesOccurringWithinSchedule(todayExpenses, scheduleDetailOpen);
-  }, [scheduleDetailOpen, todayExpenses]);
+    return expensesOccurringWithinSchedule(expensesData?.items ?? [], scheduleDetailOpen);
+  }, [scheduleDetailOpen, expensesData?.items]);
 
   const monthToDateTotal = useMemo(() => {
     const items = expensesData?.items ?? [];
-    return items.reduce((sum, e) => {
-      const d = new Date(e.occurredAt);
-      if (yyyyMmLocal(d) !== monthKey) return sum;
-      if (yyyyMmDdLocal(d) > dayKey) return sum;
-      return sum + (Number(e.amount) || 0);
-    }, 0);
-  }, [dayKey, expensesData, monthKey]);
+    return sumExpensesForMonthToDate(aggregateMode, items, monthKey, dayKey);
+  }, [aggregateMode, dayKey, expensesData, monthKey]);
 
   const myMonthToDateTotal = useMemo(() => {
     const items = expensesData?.items ?? [];
-    const me = "나";
-    return items.reduce((sum, e) => {
-      const d = new Date(e.occurredAt);
-      if (yyyyMmLocal(d) !== monthKey) return sum;
-      if (yyyyMmDdLocal(d) > dayKey) return sum;
-      return sum + myShareAmountForMe(e, me);
-    }, 0);
-  }, [dayKey, expensesData, monthKey]);
+    return sumExpensesForMonthToDate(aggregateMode, items, monthKey, dayKey, {
+      onlyMine: true,
+      me: "나"
+    });
+  }, [aggregateMode, dayKey, expensesData, monthKey]);
 
   const myTodayTotal = useMemo(() => {
     const me = "나";
@@ -1410,6 +1732,29 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     }
     return { me, iPay, iReceive, perPerson };
   }, [todayExpenses]);
+
+  const settlementAllByDay = useMemo(() => {
+    const all = expensesData?.items ?? [];
+    const me = "나";
+    const byDay = new Map<string, Map<string, number>>();
+    for (const e of all) {
+      const day = yyyyMmDdLocal(new Date(e.occurredAt));
+      const d = settlementDeltaForMe(e, me);
+      if (!d.perPerson.size) continue;
+      const per = byDay.get(day) ?? new Map<string, number>();
+      for (const [name, amt] of d.perPerson.entries()) {
+        per.set(name, (per.get(name) ?? 0) + amt);
+      }
+      if (per.size) byDay.set(day, per);
+    }
+    // keep only days with at least one non-zero entry
+    for (const [day, per] of Array.from(byDay.entries())) {
+      const cleaned = new Map(Array.from(per.entries()).filter(([, amt]) => Math.abs(amt) > 0.0001));
+      if (cleaned.size) byDay.set(day, cleaned);
+      else byDay.delete(day);
+    }
+    return byDay;
+  }, [expensesData?.items]);
 
   const budgetUi = useMemo(() => {
     const monthTotal = myMonthToDateTotal;
@@ -1477,12 +1822,39 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   ]);
 
   const timeline = useMemo(() => {
-    const expenses = todayExpenses;
+    const expenses = todayExpensesDisplay;
     const expenseItems: TimelineItem[] = expenses.map((e) => ({
       kind: "expense",
       startMs: new Date(e.occurredAt).getTime(),
       expense: e
     }));
+
+    // 결제일(occurredAt)과 다른 "이용일" 표시용(합계 미포함): 교통2 Method C의 transitSegments dayKey를 사용
+    const usageExpenseItems: TimelineItem[] = (() => {
+      const all = expensesData?.items ?? [];
+      const out: TimelineItem[] = [];
+      for (const e of all) {
+        if (normalizeCategory(e.category) !== "교통2") continue;
+        if (!Array.isArray(e.transitSegments) || !e.transitSegments.length) continue;
+        const occurredDay = yyyyMmDdLocal(new Date(e.occurredAt));
+        for (const s of e.transitSegments as any[]) {
+          const dk = typeof s?.dayKey === "string" ? s.dayKey : null;
+          if (dk !== dayKey) continue;
+          if (occurredDay === dayKey) continue; // same-day면 중복표시 X
+          const startText = typeof s?.start === "string" ? String(s.start).trim() : "";
+          const endText = typeof s?.end === "string" ? String(s.end).trim() : "";
+          const usageMemo = typeof s?.memo === "string" ? String(s.memo).trim() : "";
+          const m = startText ? parseFlexibleTimeToMinutes(startText) : null;
+          const startMs = m != null ? dateFromSlotMinutes(dayLocal00, m).getTime() : dayLocal00.getTime();
+          const from = typeof s?.from === "string" ? String(s.from).trim() : "";
+          const to = typeof s?.to === "string" ? String(s.to).trim() : "";
+          const label = from || to ? `${from || "?"} → ${to || "?"}` : "이동";
+          out.push({ kind: "usage-expense", startMs, expense: e, label, startText, endText, usageMemo });
+        }
+      }
+      return out;
+    })();
+
     const schedules = scheduleData?.items ?? [];
     const scheduleItems: TimelineItem[] = schedules.map((s) => ({
       kind: "schedule",
@@ -1494,8 +1866,8 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       note: s.note,
       linkedExpenseSum: 0
     }));
-    return [...scheduleItems, ...expenseItems].sort((a, b) => a.startMs - b.startMs);
-  }, [todayExpenses, scheduleData?.items]);
+    return [...scheduleItems, ...expenseItems, ...usageExpenseItems].sort((a, b) => a.startMs - b.startMs);
+  }, [todayExpensesDisplay, scheduleData?.items, expensesData?.items, dayKey, dayLocal00]);
 
   if (!authUser) {
     return (
@@ -1516,12 +1888,12 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     <Header
       dayKey={dayKey}
       monthKey={monthKey}
-      monthMode={monthExpenseDetailOpen}
+      monthMode={monthExpenseDetailOpen || calendarOpen}
       calendarInputRef={calendarInputRef}
       onPick={(d) => setSelectedDay(d)}
       onPrev={() => {
         const d = new Date(selectedDay);
-        if (monthExpenseDetailOpen) {
+        if (monthExpenseDetailOpen || calendarOpen) {
           d.setDate(1);
           d.setMonth(d.getMonth() - 1);
         } else {
@@ -1531,7 +1903,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       }}
       onNext={() => {
         const d = new Date(selectedDay);
-        if (monthExpenseDetailOpen) {
+        if (monthExpenseDetailOpen || calendarOpen) {
           d.setDate(1);
           d.setMonth(d.getMonth() + 1);
         } else {
@@ -1539,8 +1911,9 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         }
         setSelectedDay(d);
       }}
-      showDetailClose={todayExpenseDetailOpen || monthExpenseDetailOpen}
+      showDetailClose={todayExpenseDetailOpen || monthExpenseDetailOpen || calendarOpen}
       onDetailClose={() => navigate("/", { replace: false })}
+      rightSlot={<AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} size="xs" />}
     />
   );
 
@@ -1554,7 +1927,10 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       onMethodChange={setSettlementLogMethod}
       onNoteChange={setSettlementLogNote}
       onCancel={() => {
-        if (settlementLogOpen?.revertOnClose) {
+        if (
+          settlementLogOpen?.revertOnClose &&
+          isNetSettledForDay(settlementLogOpen.day, settlementLogOpen.other)
+        ) {
           toggleNetSettledForDay(settlementLogOpen.day, settlementLogOpen.other);
         }
         setSettlementLogOpen(null);
@@ -1587,23 +1963,201 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
           };
           return next;
         });
+        if (settlementLogOpen.revertOnClose && !isNetSettledForDay(day, other)) {
+          toggleNetSettledForDay(day, other);
+        }
         setSettlementLogOpen(null);
       }}
     />
   );
 
+  if (calendarOpen) {
+    const expensesAll = expensesData?.items ?? [];
+    const monthSchedules = (monthSchedulesData?.items ?? []).filter(
+      (s) => yyyyMmLocal(new Date(s.startAt)) === monthKey
+    );
+
+    const spendByDay = spendByDayForCalendar(aggregateMode, expensesAll, monthKey);
+    const calendarMonthTotal = sumExpensesForMonth(aggregateMode, expensesAll, monthKey);
+
+    const schedulesByDay = new Map<string, ScheduleItem[]>();
+    for (const s of monthSchedules) {
+      const day = yyyyMmDdLocal(new Date(s.startAt));
+      const arr = schedulesByDay.get(day) ?? [];
+      arr.push(s);
+      schedulesByDay.set(day, arr);
+    }
+    for (const [k, arr] of schedulesByDay.entries()) {
+      arr.sort((a, b) => (a.startAt < b.startAt ? -1 : 1));
+      schedulesByDay.set(k, arr);
+    }
+
+    const first = new Date(`${monthKey}-01T00:00:00`);
+    const firstDow = first.getDay(); // 0..6
+    const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const cells = Array.from({ length: firstDow + lastDay }, (_, i) => {
+      if (i < firstDow) return null;
+      return i - firstDow + 1;
+    });
+
+    const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+    const tempHolidaySet = (() => {
+      // 임시 공휴일(또는 추가 공휴일)을 로컬에서 지정할 수 있게: localStorage["tempHolidays"] = ["YYYY-MM-DD", ...]
+      try {
+        const raw = window.localStorage.getItem("tempHolidays");
+        if (!raw) return new Set<string>();
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return new Set<string>();
+        const list = parsed.map((x) => String(x)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+        return new Set(list);
+      } catch {
+        return new Set<string>();
+      }
+    })();
+
+    const isFixedKrHoliday = (ymd: string) => {
+      // 양력 고정 공휴일만(설/추석 등 음력은 제외)
+      const mmdd = ymd.slice(5);
+      const year = Number(ymd.slice(0, 4));
+      return (
+        mmdd === "01-01" || // 신정
+        mmdd === "03-01" || // 삼일절
+        (year >= 2026 && mmdd === "05-01") || // 근로자의날(요청: 올해부터 공휴일 취급)
+        (year >= 2026 && mmdd === "07-17") || // (요청) 2026년부터 공휴일 취급
+        (year >= 2026 && mmdd === "05-25") || // (요청) 대체 공휴일
+        mmdd === "05-05" || // 어린이날
+        mmdd === "06-06" || // 현충일
+        mmdd === "08-15" || // 광복절
+        mmdd === "10-03" || // 개천절
+        mmdd === "10-09" || // 한글날
+        mmdd === "12-25" // 성탄절
+      );
+    };
+
+    return (
+      <div className="min-h-dvh bg-white pb-[calc(4.25rem+env(safe-area-inset-bottom))]">
+        {headerEl}
+        <main>
+          <div className="mx-auto w-full max-w-md px-4 py-4">
+            <section className="overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-slate-900">달력</div>
+                  <AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} />
+                </div>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    {aggregateMode === "cashflow" ? "이번달 실출금" : "이번달 사용액"}
+                  </div>
+                  <div className="text-sm font-extrabold tabular-nums text-slate-900">
+                    {Math.round(calendarMonthTotal).toLocaleString()}
+                    <span className="ml-0.5 text-[11px] font-semibold text-slate-400">원</span>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-7 gap-2 text-[11px] font-semibold text-slate-400">
+                  {WEEKDAYS.map((w) => (
+                    <div key={w} className="text-center">
+                      {w}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 grid grid-cols-7 gap-2">
+                  {cells.map((dayNum, idx) => {
+                    if (!dayNum) return <div key={`e-${idx}`} className="h-[92px]" />;
+                    const dayKeyCell = `${monthKey}-${String(dayNum).padStart(2, "0")}`;
+                    const dow = new Date(`${dayKeyCell}T00:00:00`).getDay(); // 0..6
+                    const isHoliday = isFixedKrHoliday(dayKeyCell) || tempHolidaySet.has(dayKeyCell);
+                    const isSun = dow === 0;
+                    const isSat = dow === 6;
+                    const dayTone = isSun || isHoliday ? "text-rose-600" : isSat ? "text-indigo-600" : "text-slate-900";
+                    const spend = spendByDay.get(dayKeyCell) ?? 0;
+                    const sched = schedulesByDay.get(dayKeyCell) ?? [];
+                    const titles = sched.map((s) => {
+                      const parsed = parseEmojiPrefixedTitle(s.title);
+                      // 달력에는 "일정에 적힌 금액" 노출하지 않기 (예: "점심 12,000원" → "점심")
+                      const raw = (parsed.content || s.title || "").trim();
+                      return raw.replace(/\s*\(?\d{1,3}(?:,\d{3})*(?:원|₩)\)?\s*$/g, "").trim() || raw;
+                    });
+                    const maxShow = 3;
+                    const shown = titles.slice(0, maxShow);
+                    const rest = titles.length - shown.length;
+                    return (
+                      <button
+                        key={dayKeyCell}
+                        type="button"
+                        className="relative h-[92px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-sm hover:brightness-[0.99]"
+                        onClick={() => navigate(`/today/${dayKeyCell}`)}
+                        title={dayKeyCell}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className={cn("text-xs font-extrabold tabular-nums", dayTone)}>{dayNum}</div>
+                          {spend ? (
+                            <div className="min-w-0 text-right text-[10px] font-semibold tabular-nums tracking-tight text-slate-600 whitespace-nowrap">
+                              {formatCalendarWon(spend)}
+                            </div>
+                          ) : (
+                            <div className="min-w-0" />
+                          )}
+                        </div>
+                        <div className="mt-2 space-y-0.5">
+                          {shown.map((t, i) => (
+                            <div key={i} className="truncate text-[11px] font-semibold text-slate-500">
+                              {t}
+                            </div>
+                          ))}
+                          {rest > 0 ? (
+                            <div className="text-[11px] font-semibold text-slate-400">+{rest}</div>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+        <BottomNav />
+      </div>
+    );
+  }
+
   if (monthExpenseDetailOpen) {
+    const usageTransit2ByDayForMonth = (() => {
+      const all = expensesData?.items ?? [];
+      const byDay = new Map<string, number>();
+      for (const e of all) {
+        if (normalizeCategory(e.category) !== "교통2") continue;
+        if (!Array.isArray(e.transitSegments) || !e.transitSegments.length) continue;
+        const occurredDay = yyyyMmDdLocal(new Date(e.occurredAt));
+        for (const s of e.transitSegments as any[]) {
+          const dk = typeof s?.dayKey === "string" ? s.dayKey : null;
+          if (!dk || !/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
+          if (yyyyMmLocal(new Date(`${dk}T00:00:00`)) !== monthKey) continue;
+          if (occurredDay === dk) continue;
+          byDay.set(dk, (byDay.get(dk) ?? 0) + 1);
+        }
+      }
+      return byDay;
+    })();
     return (
       <>
         <MonthDetailView
           header={headerEl}
           settlementDialog={settlementRecordDialogEl}
           expenses={expensesData?.items}
+          schedules={monthSchedulesData?.items ?? []}
+          usageTransit2ByDay={usageTransit2ByDayForMonth}
           monthKey={monthKey}
           monthlyBudgetWon={monthlyBudgetWon}
           me="나"
           isNetSettledForDay={isNetSettledForDay}
           requestToggleNetSettledForDay={requestToggleNetSettledForDay}
+          settlementAllByDay={settlementAllByDay}
+          aggregateMode={aggregateMode}
+          modeToggle={
+            <AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} size="xs" />
+          }
         />
         <BottomNav />
       </>
@@ -1611,17 +2165,42 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   }
 
   if (todayExpenseDetailOpen) {
+    const usageTransit2ForDay = (() => {
+      const all = expensesData?.items ?? [];
+      const out: Array<{ label: string; startText: string; endText: string; memo: string }> = [];
+      for (const e of all) {
+        if (normalizeCategory(e.category) !== "교통2") continue;
+        if (!Array.isArray(e.transitSegments) || !e.transitSegments.length) continue;
+        const occurredDay = yyyyMmDdLocal(new Date(e.occurredAt));
+        for (const s of e.transitSegments as any[]) {
+          const dk = typeof s?.dayKey === "string" ? s.dayKey : null;
+          if (dk !== dayKey) continue;
+          if (occurredDay === dayKey) continue;
+          const from = typeof s?.from === "string" ? String(s.from).trim() : "";
+          const to = typeof s?.to === "string" ? String(s.to).trim() : "";
+          const label = from || to ? `${from || "?"} → ${to || "?"}`.trim() : "이동";
+          const startText = typeof s?.start === "string" ? String(s.start).trim() : "";
+          const endText = typeof s?.end === "string" ? String(s.end).trim() : "";
+          const memo = typeof s?.memo === "string" ? String(s.memo).trim() : "";
+          out.push({ label, startText, endText, memo });
+        }
+      }
+      return out;
+    })();
     return (
       <>
         <TodayDetailView
           header={headerEl}
           settlementDialog={settlementRecordDialogEl}
-          todayExpenses={todayExpenses}
+          todayExpenses={todayExpensesDisplay}
+          schedules={scheduleData?.items ?? []}
+          usageTransit2={usageTransit2ForDay}
           budgetUi={budgetUi}
           settlementToday={settlementToday}
           dayKey={dayKey}
           isNetSettledForDay={isNetSettledForDay}
           requestToggleNetSettledForDay={requestToggleNetSettledForDay}
+          settlementAllByDay={settlementAllByDay}
         />
         <BottomNav />
       </>
@@ -1684,15 +2263,122 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
     const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
     const note = encodeScheduleNote(schedulePeopleText, mergedNote);
-    await updateSchedule.mutateAsync({
-      id: composeEditScheduleId,
-      input: {
-        startAt,
-        endAt,
-        title: scheduleTitle,
-        note
+    try {
+      await updateSchedule.mutateAsync({
+        id: composeEditScheduleId,
+        input: {
+          startAt,
+          endAt,
+          title: scheduleTitle,
+          note,
+          showOnCalendar: scheduleShowOnCalendar
+        }
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`저장에 실패했어요.\n${msg}`);
+      return;
+    }
+
+    // 일정 수정에서도 "비용도 함께 기록"을 켜면 지출을 생성
+    // (일정-지출 연결은 occurredAt 기준 자동 연결 로직을 사용)
+    if (scheduleWithExpense) {
+      const amount = parseAmountInput(exAmount);
+      if (amount == null) {
+        window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
+        return;
       }
-    });
+      const payMinRaw = schedulePayTimeText.trim()
+        ? parseFlexibleTimeToMinutes(schedulePayTimeText)
+        : startMin;
+      if (payMinRaw == null) {
+        window.alert("결제 시각을 확인해줘.");
+        return;
+      }
+      const occurredAt = dateFromSlotMinutes(composeDayLocal00, payMinRaw).toISOString();
+
+      const transitPayload = buildTransitPayload(catNorm, {
+        legs: transitLegs,
+        transit2: {
+          mode: exTransitMode,
+          start: entryStartText.trim(),
+          end: entryEndText.trim(),
+          fromText: exTransitFromText,
+          toText: exTransitToText
+        }
+      });
+      const transit2SegmentsPayload =
+        catNorm === "교통2"
+          ? transit2SegmentsDraft.map((s) => ({
+              kind: "TRANSIT2",
+              dayKey: s.dayKey,
+              start: s.start,
+              end: s.end,
+              from: s.fromText,
+              to: s.toText,
+              mode: s.mode,
+              memo: s.memoText?.trim() ? s.memoText.trim() : null
+            }))
+          : null;
+
+      const payerName =
+        payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
+      const participants =
+        expenseScope === "SHARED"
+          ? Array.from(
+              new Set(
+                sharedNamesText
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              )
+            )
+          : null;
+      const participantsAll =
+        expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+
+      const merchantTrim = exMerchant.trim();
+      const merchantFinal = merchantTrim || title;
+
+      try {
+        await createExpense.mutateAsync({
+          occurredAt,
+          endAt,
+          amount,
+          category: catNorm,
+          merchant: merchantFinal,
+          detail: exDetail.trim() ? exDetail.trim() : null,
+          memo: entryNote.trim() ? entryNote.trim() : null,
+          paymentType: exPaymentType,
+          paymentOwner: payerName,
+          paymentMethodLabel:
+            exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
+          ...installmentPayload(
+            exPaymentType,
+            exInstallment,
+            exInstallmentMonths,
+            exInstallmentNoInterest
+          ),
+          scope: expenseScope,
+          participants: participantsAll,
+          plannedAt: buildPlannedAtIso(),
+          ...transitPayload,
+          ...(catNorm === "교통2"
+            ? {
+                transitMode: transit2SegmentsDraft[0]?.mode ?? exTransitMode,
+                transitFrom: transit2SegmentsDraft[0]?.fromText ?? exTransitFromText,
+                transitTo: transit2SegmentsDraft[0]?.toText ?? exTransitToText,
+                transitSegments: transit2SegmentsPayload
+              }
+            : {})
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        window.alert(`지출 저장에 실패했어요.\n${msg}`);
+        return;
+      }
+    }
+
     handleComposeClose();
   }
 
@@ -1753,37 +2439,63 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         toText: exTransitToText
       }
     });
-    await updateExpense.mutateAsync({
-      id: composeEditExpenseId,
-      input: {
-        occurredAt,
-        endAt,
-        amount: parsedAmount,
-        category: catNorm,
-        paymentType: exPaymentType,
-        paymentMethodLabel:
-          exPaymentType === "CASH"
-            ? null
-            : exPaymentLabel.trim()
-              ? exPaymentLabel.trim()
-              : null,
-        paymentOwner: payerName,
-        scope: expenseScope,
-        participants: participantsAll,
-        merchant: merchantTrim ? merchantTrim : null,
-        detail: detailCombined,
-        memo: entryNote.trim() ? entryNote.trim() : null,
-        ...installmentPayload(
-          exPaymentType,
-          exInstallment,
-          exInstallmentMonths,
-          exInstallmentNoInterest
-        ),
-        plannedAt: buildPlannedAtIso(),
-        ...transitPayload
-      }
-    });
-    handleComposeClose();
+    const transit2SegmentsPayload =
+      catNorm === "교통2"
+        ? transit2SegmentsDraft.map((s) => ({
+            kind: "TRANSIT2",
+            dayKey: s.dayKey,
+            start: s.start,
+            end: s.end,
+            from: s.fromText,
+            to: s.toText,
+            mode: s.mode,
+            memo: s.memoText?.trim() ? s.memoText.trim() : null
+          }))
+        : null;
+    try {
+      await updateExpense.mutateAsync({
+        id: composeEditExpenseId,
+        input: {
+          occurredAt,
+          endAt,
+          amount: parsedAmount,
+          category: catNorm,
+          paymentType: exPaymentType,
+          paymentMethodLabel:
+            exPaymentType === "CASH"
+              ? null
+              : exPaymentLabel.trim()
+                ? exPaymentLabel.trim()
+                : null,
+          paymentOwner: payerName,
+          scope: expenseScope,
+          participants: participantsAll,
+          merchant: merchantTrim ? merchantTrim : null,
+          detail: detailCombined,
+          memo: entryNote.trim() ? entryNote.trim() : null,
+          ...installmentPayload(
+            exPaymentType,
+            exInstallment,
+            exInstallmentMonths,
+            exInstallmentNoInterest
+          ),
+          plannedAt: buildPlannedAtIso(),
+          ...transitPayload,
+          ...(catNorm === "교통2"
+            ? {
+                transitMode: transit2SegmentsDraft[0]?.mode ?? exTransitMode,
+                transitFrom: transit2SegmentsDraft[0]?.fromText ?? exTransitFromText,
+                transitTo: transit2SegmentsDraft[0]?.toText ?? exTransitToText,
+                transitSegments: transit2SegmentsPayload
+              }
+            : {})
+        }
+      });
+      handleComposeClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`저장에 실패했어요.\n${msg}`);
+    }
   }
 
   async function submitNewSchedule(args: ComposeSubmitArgs) {
@@ -1847,12 +2559,19 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
     const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote);
 
-    await createSchedule.mutateAsync({
-      startAt,
-      endAt,
-      title: scheduleTitle,
-      note: scheduleNote
-    });
+    try {
+      await createSchedule.mutateAsync({
+        startAt,
+        endAt,
+        title: scheduleTitle,
+        note: scheduleNote,
+        showOnCalendar: scheduleShowOnCalendar
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`일정 저장에 실패했어요.\n${msg}`);
+      return;
+    }
 
     if (scheduleWithExpense) {
       const amount = parseAmountInput(exAmount);
@@ -1879,6 +2598,20 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
           toText: exTransitToText
         }
       });
+      const catNorm = normalizeCategory(category);
+      const transit2SegmentsPayload =
+        catNorm === "교통2"
+          ? transit2SegmentsDraft.map((s) => ({
+              kind: "TRANSIT2",
+              dayKey: s.dayKey,
+              start: s.start,
+              end: s.end,
+              from: s.fromText,
+              to: s.toText,
+              mode: s.mode,
+              memo: s.memoText?.trim() ? s.memoText.trim() : null
+            }))
+          : null;
 
       const payerName =
         payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
@@ -1900,28 +2633,43 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       const merchantTrim = exMerchant.trim();
       const merchantFinal = merchantTrim || title;
 
-      await createExpense.mutateAsync({
-        occurredAt,
-        endAt,
-        amount,
-        category,
-        merchant: merchantFinal,
-        detail: exDetail.trim() ? exDetail.trim() : null,
-        memo: null,
-        paymentType: exPaymentType,
-        paymentOwner: payerName,
-        paymentMethodLabel:
-          exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
-        ...installmentPayload(
-          exPaymentType,
-          exInstallment,
-          exInstallmentMonths,
-          exInstallmentNoInterest
-        ),
-        scope: expenseScope,
-        participants: participantsAll,
-        ...transitPayload
-      });
+      try {
+        await createExpense.mutateAsync({
+          occurredAt,
+          endAt,
+          amount,
+          category,
+          merchant: merchantFinal,
+          detail: exDetail.trim() ? exDetail.trim() : null,
+          memo: entryNote.trim() ? entryNote.trim() : null,
+          paymentType: exPaymentType,
+          paymentOwner: payerName,
+          paymentMethodLabel:
+            exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
+          ...installmentPayload(
+            exPaymentType,
+            exInstallment,
+            exInstallmentMonths,
+            exInstallmentNoInterest
+          ),
+          scope: expenseScope,
+          participants: participantsAll,
+          plannedAt: buildPlannedAtIso(),
+          ...transitPayload,
+          ...(catNorm === "교통2"
+            ? {
+                transitMode: transit2SegmentsDraft[0]?.mode ?? exTransitMode,
+                transitFrom: transit2SegmentsDraft[0]?.fromText ?? exTransitFromText,
+                transitTo: transit2SegmentsDraft[0]?.toText ?? exTransitToText,
+                transitSegments: transit2SegmentsPayload
+              }
+            : {})
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        window.alert(`지출 저장에 실패했어요.\n${msg}`);
+        return;
+      }
     }
 
     if (convertFromExpenseId) {
@@ -2007,29 +2755,35 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
 
     const detailCombined = [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
 
-    await createExpense.mutateAsync({
-      occurredAt: startAt,
-      endAt,
-      amount,
-      category,
-      merchant: merchantTrim ? merchantTrim : null,
-      detail: detailCombined,
-      memo: entryNote.trim() ? entryNote.trim() : null,
-      paymentType: exPaymentType,
-      paymentOwner: payerName,
-      paymentMethodLabel:
-        exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
-      ...installmentPayload(
-        exPaymentType,
-        exInstallment,
-        exInstallmentMonths,
-        exInstallmentNoInterest
-      ),
-      scope: expenseScope,
-      participants: participantsAll,
-      plannedAt: buildPlannedAtIso(),
-      ...transitPayload
-    });
+    try {
+      await createExpense.mutateAsync({
+        occurredAt: startAt,
+        endAt,
+        amount,
+        category,
+        merchant: merchantTrim ? merchantTrim : null,
+        detail: detailCombined,
+        memo: entryNote.trim() ? entryNote.trim() : null,
+        paymentType: exPaymentType,
+        paymentOwner: payerName,
+        paymentMethodLabel:
+          exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
+        ...installmentPayload(
+          exPaymentType,
+          exInstallment,
+          exInstallmentMonths,
+          exInstallmentNoInterest
+        ),
+        scope: expenseScope,
+        participants: participantsAll,
+        plannedAt: buildPlannedAtIso(),
+        ...transitPayload
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`저장에 실패했어요.\n${msg}`);
+      return;
+    }
 
     if (convertFromScheduleId) {
       await deleteSchedule.mutateAsync(convertFromScheduleId);
@@ -2042,7 +2796,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     <div className="min-h-dvh">
       {headerEl}
 
-      <main className="mx-auto w-full max-w-md px-4 pb-[calc(10rem+env(safe-area-inset-bottom))] pt-2">
+      <main className="mx-auto w-full max-w-md px-4 pb-[calc(10rem+env(safe-area-inset-bottom))] pt-4">
         {expensesError || scheduleError ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             API 연결 실패. 서버 실행 상태를 확인하세요.
@@ -2103,26 +2857,12 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                   {formatWon(Math.round(budgetUi.dailyBudget - budgetUi.todayTotal))}
                 </div>
               </div>
-              <button
-                type="button"
-                className={BUDGET_DETAIL_LINK_BTN}
-                onClick={() => navigate(`/today/${encodeURIComponent(dayKey)}`)}
-              >
-                오늘 지출 상세
-              </button>
             </div>
 
             <div className="mt-4 rounded-3xl border border-indigo-200/70 bg-slate-50/70 p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold text-slate-500">이번달 예산 현황</div>
-                <button
-                  type="button"
-                  className={BUDGET_DETAIL_LINK_BTN}
-                  onClick={() => navigate(`/month/${encodeURIComponent(monthKey)}`)}
-                  title="이번달 지출 상세"
-                >
-                  이번달 지출 상세
-                </button>
+                <AggregateModeToggle mode={aggregateMode} onChange={setAggregateMode} size="xs" />
               </div>
               <div className="mt-2 h-2 w-full rounded-full bg-white">
                 <div
@@ -2171,7 +2911,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         <section>
           <h2 className="text-sm font-semibold text-slate-900">오늘 기록</h2>
 
-          <ul className="mt-2 space-y-2">
+          <ul className="mt-4 space-y-2">
             {timeline.length === 0 ? (
               <li className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">
                 아직 기록이 없어요. 오른쪽 아래 + 버튼으로 기록해봐.
@@ -2205,7 +2945,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                       }}
                     >
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex min-w-0 gap-3">
+                        <div className="flex min-w-0 flex-1 gap-3">
                           <div
                             className={cn(
                               "mt-0.5 inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-2xl",
@@ -2237,11 +2977,6 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                                   </span>
                                 </span>
                               ) : null}
-                              {schedNote.memo ? (
-                                <span className="min-w-0 max-w-full flex-[1_1_100%] break-words normal-case">
-                                  {schedNote.memo}
-                                </span>
-                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -2249,16 +2984,115 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                           <div className="text-xs font-semibold text-slate-400">기록</div>
                         </div>
                       </div>
+                      {schedNote.memo ? (
+                        <div className="mt-2 ml-[3.75rem] w-[calc(100%-3.75rem)] min-w-0 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
+                          <span className="break-words">“{schedNote.memo}”</span>
+                        </div>
+                      ) : null}
                     </button>
+                  </li>
+                );
+              }
+
+              if (it.kind === "usage-expense") {
+                const e = it.expense;
+                const tint = tintForCategory(e.category || "기타");
+                const usageTimeLabel = it.endText?.trim()
+                  ? `${it.startText?.trim() || ""}~${it.endText.trim()}`
+                  : (it.startText?.trim() || "");
+                const expenseTransitIcon =
+                  normalizeCategory(e.category) === "교통2"
+                    ? (() => {
+                        const direct = (e.transitMode ?? "").trim();
+                        if (direct) return direct;
+                        const seg = e.transitSegments;
+                        if (!Array.isArray(seg) || !seg.length) return null;
+                        const first = seg[0] as any;
+                        const m = typeof first?.mode === "string" ? String(first.mode).trim() : "";
+                        return m || null;
+                      })()
+                    : null;
+                return (
+                  <li key={`u-${e.id}-${it.startMs}`}>
+                    <ExpenseCard
+                      onClick={() => setExpenseDetailOpen(e)}
+                      leftIcon={
+                        <div
+                          className={cn(
+                            "mt-0.5 inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-2xl opacity-70",
+                            tint.border,
+                            tint.bg
+                          )}
+                        >
+                          {expenseTransitIcon ?? emojiForCategory(e.category || "기타")}
+                        </div>
+                      }
+                      title={
+                        <span className="inline-flex items-center gap-2">
+                          <span>{it.label}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                            이용
+                          </span>
+                        </span>
+                      }
+                      meta={
+                        <span className="inline-flex shrink-0 items-center gap-1">
+                          <ClockIcon className="h-4 w-4 text-slate-300" />
+                          <span className="tabular-nums text-slate-400">{usageTimeLabel || "이용"}</span>
+                        </span>
+                      }
+                      quote={
+                        it.usageMemo ? (
+                          <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
+                            <span className="text-slate-500">이용일 메모</span>
+                            <span className="text-slate-400"> · </span>
+                            <span className="break-words">“{it.usageMemo}”</span>
+                          </div>
+                        ) : null
+                      }
+                      amount={
+                        e.amount > 0 ? (
+                          <div className="flex items-baseline justify-end gap-1 tabular-nums text-slate-400">
+                            <span className="text-lg font-extrabold tracking-tight">
+                              {Math.round(e.amount).toLocaleString()}
+                            </span>
+                            <span className="text-xs font-semibold">원</span>
+                          </div>
+                        ) : (
+                          <div className="text-right text-xs font-semibold tabular-nums text-slate-400">
+                            금액 미입력
+                          </div>
+                        )
+                      }
+                    />
                   </li>
                 );
               }
 
               const e = it.expense;
               const tint = tintForCategory(e.category || "기타");
-              const settlementLine = settlementLineForExpense(e, "나");
-              const isSettled = isExpenseNetSettledForDay(dayKey, e, "나");
-              const memoText = (e.detail ?? e.memo ?? "").trim();
+              const isCashflowVirtual = String(e.id || "").includes("::cashflow::");
+              const cashflowVirtualMonthKey = isCashflowVirtual
+                ? (String(e.id || "").split("::cashflow::")[1] ?? "").trim()
+                : "";
+              const originalForCashflow = isCashflowVirtual ? resolveOriginalExpense(e) : e;
+              const installmentNth =
+                isCashflowVirtual &&
+                originalForCashflow.paymentType === "CARD" &&
+                !!originalForCashflow.installment &&
+                !!originalForCashflow.installmentMonths &&
+                originalForCashflow.installmentMonths >= 2 &&
+                /^\d{4}-\d{2}$/.test(cashflowVirtualMonthKey)
+                  ? monthIndexDiff(yyyyMmLocal(new Date(originalForCashflow.occurredAt)), cashflowVirtualMonthKey) + 1
+                  : null;
+              const settlementLine = isCashflowVirtual ? null : settlementLineForExpense(e, "나");
+              const isSettled = isCashflowVirtual ? true : isExpenseNetSettledForDay(dayKey, e, "나");
+              // 카드 하단 “메모”는 사용자가 입력한 memo를 우선 노출 (detail보다 우선)
+              const rawMemoText = (e.memo ?? e.detail ?? "").trim();
+              const memoText =
+                normalizeCategory(e.category) === "교통2" && isUsageDayDifferent(e, dayKey)
+                  ? stripTransitRoutePrefix(rawMemoText, e.transitFrom, e.transitTo).trim()
+                  : rawMemoText;
               const expenseTransitIcon =
                 normalizeCategory(e.category) === "교통2"
                   ? (() => {
@@ -2275,12 +3109,19 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 e.scope === "SHARED" && Array.isArray(e.participants) && e.participants.length
                   ? participantsDisplayWithoutMe(e.participants, "나")
                   : (e.paymentOwner ?? "-");
+              const installmentShort =
+                e.paymentType === "CARD" && e.installment && e.installmentMonths
+                  ? e.installmentNoInterest
+                    ? `무${e.installmentMonths}`
+                    : `${e.installmentMonths}`
+                  : null;
               const methodLabel =
                 e.paymentType === "CASH" ? "현금" : e.paymentMethodLabel || PAYMENT_TYPE_LABEL[e.paymentType];
+              const methodLabelWithInstallment = installmentShort ? `${methodLabel} · ${installmentShort}` : methodLabel;
               return (
                 <li key={`e-${e.id}`}>
                   <ExpenseCard
-                    onClick={() => setExpenseDetailOpen(e)}
+                    onClick={() => setExpenseDetailOpen(resolveOriginalExpense(e))}
                     leftIcon={
                       <div
                         className={cn(
@@ -2322,6 +3163,17 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                         >
                           {PAYMENT_TYPE_LABEL[e.paymentType]}
                         </span>
+                        {String(e.id || "").includes("::cashflow::") ? (
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                              chipClass("orange")
+                            )}
+                          >
+                            할부(
+                            {installmentNth ?? "?"}/{originalForCashflow.installmentMonths ?? "?"})
+                          </span>
+                        ) : null}
                       </>
                     }
                     meta={
@@ -2342,17 +3194,27 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                         <span className="shrink-0">·</span>
                         <span className="inline-flex min-w-0 max-w-full items-start gap-1">
                           <MoneyIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
-                          <span className="min-w-0 break-words">{methodLabel}</span>
+                          <span className="min-w-0 break-words">{methodLabelWithInstallment}</span>
                         </span>
                       </>
                     }
                     amount={
                       e.amount > 0 ? (
-                        <div className="flex items-baseline justify-end gap-1 tabular-nums text-slate-900">
-                          <span className="text-lg font-extrabold tracking-tight">
-                            {e.amount.toLocaleString()}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-400">원</span>
+                        <div className="text-right tabular-nums text-slate-900">
+                          <div className="flex items-baseline justify-end gap-1">
+                            <span className="text-lg font-extrabold tracking-tight">
+                              {e.amount.toLocaleString()}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-400">원</span>
+                          </div>
+                          {aggregateMode !== "cashflow" &&
+                          e.paymentType === "CARD" &&
+                          e.installment &&
+                          e.installmentMonths ? (
+                            <div className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                              월 {Math.round(e.amount / e.installmentMonths).toLocaleString()}원
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
                         <div className="text-right text-xs font-semibold tabular-nums text-slate-400">
@@ -2475,8 +3337,8 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
               const derivedTransitTitle = (() => {
                 const catNorm = normalizeCategory(category);
                 if (catNorm === "교통2") {
-                  const from = exTransitFromText.trim();
-                  const to = exTransitToText.trim();
+                  const from = (transit2SegmentsDraft[0]?.fromText ?? exTransitFromText).trim();
+                  const to = (transit2SegmentsDraft[0]?.toText ?? exTransitToText).trim();
                   if (from || to) return `${from || "?"} → ${to || "?"}`.trim();
                   return "이동";
                 }
@@ -2587,9 +3449,40 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                     className="text-sm"
                   />
                 </label>
+                {composeKind === "expense" && !isTransit2 ? (
+                  <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                    <label className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={plannedAtEnabled}
+                        onChange={(e) => setPlannedAtEnabled(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      />
+                      <span className="text-sm font-semibold text-slate-800">결제일과 다른 날 사용</span>
+                    </label>
+                    {plannedAtEnabled ? (
+                      <label className="mt-3 block">
+                        <div className="mb-1 text-xs text-slate-400">사용 예정/실제일</div>
+                        <DateMonthInput
+                          type="datetime-local"
+                          value={plannedAtLocal}
+                          onChange={(e) => setPlannedAtLocal(e.target.value)}
+                          className="text-sm"
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
                 <label>
                   <div className="mb-1 text-xs text-slate-400">
-                    {isTransitCategory ? "출발시간" : "시작"}
+                    {composeEditExpenseId ||
+                    composeEditScheduleId ||
+                    composeConvertFromExpenseId ||
+                    composeConvertFromScheduleId
+                      ? "시작 (필수)"
+                      : isTransitCategory
+                        ? "출발시간 (필수)"
+                        : "시작 (필수)"}
                   </div>
                   <input
                     value={entryStartText}
@@ -2602,7 +3495,14 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 </label>
                 <label>
                   <div className="mb-1 text-xs text-slate-400">
-                    {isTransitCategory ? "도착시간" : "끝 (선택)"}
+                    {composeEditExpenseId ||
+                    composeEditScheduleId ||
+                    composeConvertFromExpenseId ||
+                    composeConvertFromScheduleId
+                      ? "끝 (선택)"
+                      : isTransitCategory
+                        ? "도착시간 (선택)"
+                        : "끝 (선택)"}
                   </div>
                   <input
                     value={entryEndText}
@@ -2614,7 +3514,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                   />
                 </label>
                 <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">카테고리</div>
+                  <div className="mb-1 text-xs text-slate-400">카테고리 (필수)</div>
                   <div className="flex items-center gap-3">
                     <CategoryCardPreview category={entryCategory} />
                     <select
@@ -2655,17 +3555,19 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
 
                 {isTransit2 ? (
                   <Transit2Fields
-                    mode={exTransitMode}
-                    setMode={setExTransitMode}
-                    fromText={exTransitFromText}
-                    setFromText={setExTransitFromText}
-                    toText={exTransitToText}
-                    setToText={setExTransitToText}
+                    segments={transit2SegmentsDraft}
+                    setSegments={(next) => {
+                      setTransit2SegmentsDraft(next);
+                      const first = next[0];
+                      setExTransitMode(first?.mode ?? "🚆");
+                      setExTransitFromText(first?.fromText ?? "");
+                      setExTransitToText(first?.toText ?? "");
+                    }}
                   />
                 ) : null}
 
                 <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">내용</div>
+                  <div className="mb-1 text-xs text-slate-400">내용 (필수)</div>
                   <input
                     value={entryTitle}
                     onChange={(e) => setEntryTitle(e.target.value)}
@@ -2675,7 +3577,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 </label>
 
                 <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">메모</div>
+                  <div className="mb-1 text-xs text-slate-400">메모 (선택)</div>
                   <input
                     value={entryNote}
                     onChange={(e) => setEntryNote(e.target.value)}
@@ -2699,6 +3601,20 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                       <label className="flex cursor-pointer items-center gap-3">
                         <input
                           type="checkbox"
+                          checked={scheduleShowOnCalendar}
+                          onChange={(e) => setScheduleShowOnCalendar(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                        />
+                        <span className="text-sm font-semibold text-slate-800">달력에 표기</span>
+                      </label>
+                      <div className="mt-1 text-[11px] font-semibold text-slate-500">
+                        체크된 일정만 달력 페이지에 표시돼요.
+                      </div>
+                    </div>
+                    <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
                           checked={scheduleWithExpense}
                           onChange={(e) => setScheduleWithExpense(e.target.checked)}
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600"
@@ -2717,11 +3633,11 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                             />
                           </label>
                           <label className="block">
-                            <div className="mb-1 text-xs text-slate-400">금액(없으면 비워도 됨)</div>
+                            <div className="mb-1 text-xs text-slate-400">금액 (필수)</div>
                             <input
                               inputMode="numeric"
                               value={exAmount}
-                              onChange={(e) => setExAmount(e.target.value)}
+                              onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
                               placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
                             />
@@ -2788,7 +3704,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                             </div>
                           </div>
                           <div className="space-y-2">
-                            <div className="mb-1 text-xs text-slate-400">결제수단</div>
+                            <div className="mb-1 text-xs text-slate-400">결제수단 (필수)</div>
                             <div className="flex flex-wrap gap-2">
                               {PAYMENT_TYPE_OPTIONS.map((opt) => (
                                 <button
@@ -2865,11 +3781,11 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 {composeKind === "expense" ? (
                   <>
                     <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">금액(없으면 비워도 됨)</div>
+                      <div className="mb-1 text-xs text-slate-400">금액 (필수)</div>
                       <input
                         inputMode="numeric"
                         value={exAmount}
-                        onChange={(e) => setExAmount(e.target.value)}
+                        onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
                         placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
                       />
@@ -2939,7 +3855,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                     </div>
 
                     <div className="col-span-2 space-y-2">
-                      <div className="mb-1 text-xs text-slate-400">결제수단</div>
+                      <div className="mb-1 text-xs text-slate-400">결제수단 (필수)</div>
                       <div className="flex flex-wrap gap-2">
                         {PAYMENT_TYPE_OPTIONS.map((opt) => (
                           <button
@@ -2987,34 +3903,6 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                           noInterest={exInstallmentNoInterest}
                           setNoInterest={setExInstallmentNoInterest}
                         />
-                      ) : null}
-                    </div>
-
-                    <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
-                      <label className="flex cursor-pointer items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={plannedAtEnabled}
-                          onChange={(e) => setPlannedAtEnabled(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                        />
-                        <span className="text-sm font-semibold text-slate-800">
-                          결제일과 다른 날 사용
-                        </span>
-                      </label>
-                      {plannedAtEnabled ? (
-                        <label className="mt-3 block">
-                          <div className="mb-1 text-xs text-slate-400">사용 예정/실제일</div>
-                          <DateMonthInput
-                            type="datetime-local"
-                            value={plannedAtLocal}
-                            onChange={(e) => setPlannedAtLocal(e.target.value)}
-                            className="text-sm"
-                          />
-                          <div className="mt-1 text-[11px] text-slate-500">
-                            캘린더의 사용일 칸에 회색으로 참고 표시되고, 합계엔 결제일에만 잡혀요.
-                          </div>
-                        </label>
                       ) : null}
                     </div>
 
@@ -3091,8 +3979,10 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
             " · " +
             PAYMENT_TYPE_LABEL[expenseDetailOpen.paymentType] +
             (expenseDetailOpen.installment && expenseDetailOpen.installmentMonths
-              ? ` · 할부 ${expenseDetailOpen.installmentMonths}개월${
-                  expenseDetailOpen.installmentNoInterest ? " · 무이자" : ""
+              ? ` · ${
+                  expenseDetailOpen.installmentNoInterest
+                    ? `무${expenseDetailOpen.installmentMonths}`
+                    : `${expenseDetailOpen.installmentMonths}`
                 }`
               : "")
           }
@@ -3146,14 +4036,32 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
               </div>
               <div>
                 <div className="text-xs text-slate-400">카드/수단명</div>
-                <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.paymentMethodLabel ?? "-"}</div>
+                <div className="mt-1 font-semibold text-slate-900">
+                  {expenseDetailOpen.paymentMethodLabel ?? "-"}
+                </div>
               </div>
+              {expenseDetailOpen.paymentType === "CARD" && expenseDetailOpen.installment && expenseDetailOpen.installmentMonths ? (
+                <div>
+                  <div className="text-xs text-slate-400">할부</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {expenseDetailOpen.installmentNoInterest
+                      ? `무${expenseDetailOpen.installmentMonths}`
+                      : `${expenseDetailOpen.installmentMonths}`}
+                  </div>
+                </div>
+              ) : null}
               <div className="col-span-2">
                 <div className="text-xs text-slate-400">결제처</div>
                 <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.merchant ?? "-"}</div>
               </div>
             </div>
-            {expenseDetailOpen.transitFrom || expenseDetailOpen.transitTo ? (
+            {(() => {
+              const hideTransitBecauseUsageDay =
+                normalizeCategory(expenseDetailOpen.category) === "교통2" &&
+                expenseDetailOpen.plannedAt &&
+                yyyyMmDdLocal(new Date(expenseDetailOpen.plannedAt)) !== yyyyMmDdLocal(new Date(expenseDetailOpen.occurredAt));
+              return !hideTransitBecauseUsageDay && (expenseDetailOpen.transitFrom || expenseDetailOpen.transitTo);
+            })() ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">이동</div>
                 <div className="mt-1 text-sm font-semibold text-slate-900">
@@ -3170,7 +4078,15 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
             {expenseDetailOpen.detail ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">세부내용</div>
-                <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.detail}</div>
+                <div className="mt-1 text-sm text-slate-800">
+                  {(() => {
+                    const raw = expenseDetailOpen.detail ?? "";
+                    const d = raw.trim();
+                    if (!d) return raw;
+                    // 교통2는 보통 title=출발→도착 이고 detail에 "출발→도착 · ..."로 저장되어 중복 노출될 수 있음
+                    return stripTransitRoutePrefix(raw, expenseDetailOpen.transitFrom, expenseDetailOpen.transitTo);
+                  })()}
+                </div>
               </div>
             ) : null}
             {expenseDetailOpen.memo ? (
@@ -3191,15 +4107,15 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
             ) : null}
           </div>
 
-          {expenseDetailOpen.scope === "SHARED" ? (
+          {settlementTransfersForMe(expenseDetailOpen, "나").length ? (
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
               <div className="text-sm font-semibold text-slate-900">정산</div>
               <div className="mt-2 space-y-2">
-                {settlementTransfersForMe(expenseDetailOpen, "나").length ? (
-                  settlementTransfersForMe(expenseDetailOpen, "나").map((t) => {
+                {settlementTransfersForMe(expenseDetailOpen, "나").map((t) => {
                   const counterparty = t.from === "나" ? t.to : t.from;
                   const key = `${t.from}→${t.to}:${t.amount}`;
-                  const done = isNetSettledForDay(dayKey, counterparty);
+                  const expenseDay = yyyyMmDdLocal(new Date(expenseDetailOpen.occurredAt));
+                  const done = isNetSettledForDay(expenseDay, counterparty);
                   const signedAmount = t.from === "나" ? -t.amount : t.amount;
                   return (
                     <SettlementRow
@@ -3209,15 +4125,10 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                       me="나"
                       amount={signedAmount}
                       settled={done}
-                      onToggle={() => requestToggleNetSettledForDay(dayKey, counterparty)}
+                      onToggle={() => requestToggleNetSettledForDay(expenseDay, counterparty)}
                     />
                   );
-                  })
-                ) : (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
-                    정산할 내역이 없어요. (결제자/참여자 정보가 없거나, 내 이름이 참여자에 없을 수 있어요.)
-                  </div>
-                )}
+                })}
               </div>
             </div>
           ) : null}
@@ -3243,7 +4154,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm"
                 onClick={() => {
                   const full = scheduleDetailOpen;
-                  const linked = expensesOccurringWithinSchedule(todayExpenses, full);
+                  const linked = expensesOccurringWithinSchedule(expensesData?.items ?? [], full);
                   fillComposeFromSchedule(full, linked);
                   setScheduleDetailOpen(null);
                   setScheduleDetailTab("schedule");
@@ -3269,6 +4180,15 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
             </div>
           }
         >
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <ClockIcon className="h-4 w-4 text-slate-400" aria-hidden="true" />
+              <span className="tabular-nums">
+                {timeRangeLabel(scheduleDetailOpen.startAt, scheduleDetailOpen.endAt)}
+              </span>
+            </div>
+          </div>
+
           <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
             <button
               type="button"

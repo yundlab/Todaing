@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Expense } from "../features/expenses/api";
+import type { ScheduleItem } from "../features/schedules/api";
 import { CATEGORY_GROUPS, emojiForCategory, normalizeCategory } from "../domain/categoryUi";
 import { formatWon } from "../domain/settlement";
 import SettlementRow from "../components/SettlementRow";
@@ -8,6 +9,13 @@ export type TodayDetailViewProps = {
   header: ReactNode;
   settlementDialog: ReactNode;
   todayExpenses: Expense[];
+  schedules: ScheduleItem[];
+  usageTransit2?: Array<{
+    label: string;
+    startText: string;
+    endText: string;
+    memo: string;
+  }>;
   budgetUi: {
     todayTotal: number;
     dailyBudget: number;
@@ -21,18 +29,33 @@ export type TodayDetailViewProps = {
   isNetSettledForDay: (day: string, name: string) => boolean;
   // eslint-disable-next-line no-unused-vars
   requestToggleNetSettledForDay: (day: string, name: string) => void;
+  settlementAllByDay?: Map<string, Map<string, number>>;
 };
 
 export function TodayDetailView({
   header,
   settlementDialog,
   todayExpenses,
+  schedules,
+  usageTransit2 = [],
   budgetUi,
   settlementToday,
   dayKey,
   isNetSettledForDay,
-  requestToggleNetSettledForDay
+  requestToggleNetSettledForDay,
+  settlementAllByDay = new Map<string, Map<string, number>>()
 }: TodayDetailViewProps) {
+  const scheduleItems = [...schedules].sort((a, b) => (a.startAt < b.startAt ? -1 : 1));
+  const mergedScheduleLike = [
+    ...scheduleItems.map((s) => ({
+      kind: "schedule" as const,
+      title: s.title,
+      startText: new Date(s.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      endText: s.endAt ? new Date(s.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+      memo: s.note ?? ""
+    })),
+    ...usageTransit2.map((u) => ({ kind: "usage" as const, title: u.label, startText: u.startText, endText: u.endText, memo: u.memo }))
+  ];
   const byCategory = new Map<string, { category: string; count: number; amount: number }>();
   for (const e of todayExpenses) {
     const cat = normalizeCategory(e.category || "기타");
@@ -66,7 +89,7 @@ export function TodayDetailView({
           <section className="overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
             <div className="h-2 w-full bg-gradient-to-r from-teal-400 via-sky-400 to-indigo-400" />
             <div className="px-5 pb-5 pt-7">
-              <div className="mt-2 flex items-baseline justify-between gap-3">
+              <div className="flex items-baseline justify-between gap-3">
                 <div className="text-xs font-semibold text-slate-500">오늘 지출 상세</div>
                 <div className="text-xs font-semibold text-slate-500">{todayExpenses.length}건</div>
               </div>
@@ -77,7 +100,7 @@ export function TodayDetailView({
                 <span className="text-sm font-semibold text-slate-400">원</span>
               </div>
 
-              <div className="mt-6 rounded-3xl border border-indigo-200/70 bg-slate-50/70 p-4">
+              <div className="mt-4 rounded-3xl border border-indigo-200/70 bg-slate-50/70 p-4">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold text-slate-500">오늘 예산 현황</div>
                   <div
@@ -158,6 +181,47 @@ export function TodayDetailView({
           <section className="mt-4 overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
             <div className="p-5">
               <div className="flex items-baseline justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-900">오늘 일정</div>
+                <div className="text-xs font-semibold text-slate-500">{mergedScheduleLike.length}건</div>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {mergedScheduleLike.length ? (
+                  mergedScheduleLike.map((s, idx) => (
+                    <div key={`${s.kind}-${idx}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 text-sm font-semibold text-slate-900">{s.title}</div>
+                        {s.kind === "usage" ? (
+                          <div className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                            이용
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-slate-500">
+                        {s.startText}
+                        {s.endText ? ` ~ ${s.endText}` : ""}
+                      </div>
+                      {s.kind === "usage" && s.memo ? (
+                        <div className="mt-2 rounded-xl bg-slate-100/70 px-3 py-2 text-xs font-semibold text-slate-600">
+                          <span className="text-slate-500">이용일 메모</span>
+                          <span className="text-slate-400"> · </span>
+                          <span className="break-words">{s.memo}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
+                    오늘 일정이 없어요.
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-4 overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
+            <div className="p-5">
+              <div className="flex items-baseline justify-between gap-3">
                 <div className="text-sm font-semibold text-slate-900">정산 현황</div>
               </div>
 
@@ -184,6 +248,47 @@ export function TodayDetailView({
                 ) : (
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
                     오늘은 정산할 내역이 없어요.
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-4 overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
+            <div className="p-5">
+              <div className="text-sm font-semibold text-slate-900">전체 정산 현황</div>
+              <div className="mt-4 space-y-3 text-sm">
+                {settlementAllByDay.size ? (
+                  Array.from(settlementAllByDay.entries())
+                    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+                    .map(([day, perPerson]) => (
+                      <div key={day}>
+                        <div className="text-xs font-semibold text-slate-600">{day}</div>
+                        <div className="mt-2 space-y-2">
+                          {Array.from(perPerson.entries())
+                            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                            .map(([name, amount]) => {
+                              const me = settlementToday.me;
+                              const from = amount >= 0 ? name : me;
+                              const to = amount >= 0 ? me : name;
+                              return (
+                                <SettlementRow
+                                  key={`${day}:${name}`}
+                                  from={from}
+                                  to={to}
+                                  me={me}
+                                  amount={amount}
+                                  settled={isNetSettledForDay(day, name)}
+                                  onToggle={() => requestToggleNetSettledForDay(day, name)}
+                                />
+                              );
+                            })}
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
+                    정산할 내역이 없어요.
                   </div>
                 )}
               </div>
