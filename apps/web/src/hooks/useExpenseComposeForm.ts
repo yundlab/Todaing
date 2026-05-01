@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { Expense } from "../features/expenses/api";
 
-const DEFAULT_START = "09:00";
-const DEFAULT_END = "09:30";
+const DEFAULT_START = "";
+const DEFAULT_END = "";
 const DEFAULT_CATEGORY = "식비";
 
 /**
@@ -27,9 +27,15 @@ export function useExpenseComposeForm() {
   const [payerOther, setPayerOther] = useState("");
   const [expenseScope, setExpenseScope] = useState<"PERSONAL" | "SHARED">("PERSONAL");
   const [sharedNamesText, setSharedNamesText] = useState("");
+  const [exInstallment, setExInstallment] = useState(false);
+  const [exInstallmentMonths, setExInstallmentMonths] = useState(2);
+  const [exInstallmentNoInterest, setExInstallmentNoInterest] = useState(false);
 
   /** 작성 완료/취소 후 폼 리셋 */
   function reset() {
+    setEntryStartText(DEFAULT_START);
+    setEntryEndText(DEFAULT_END);
+    setEntryCategory(DEFAULT_CATEGORY);
     setEntryTitle("");
     setEntryNote("");
     setExAmount("");
@@ -41,6 +47,9 @@ export function useExpenseComposeForm() {
     setPayerOther("");
     setExpenseScope("PERSONAL");
     setSharedNamesText("");
+    setExInstallment(false);
+    setExInstallmentMonths(2);
+    setExInstallmentNoInterest(false);
   }
 
   return {
@@ -74,6 +83,13 @@ export function useExpenseComposeForm() {
     setExpenseScope,
     sharedNamesText,
     setSharedNamesText,
+
+    exInstallment,
+    setExInstallment,
+    exInstallmentMonths,
+    setExInstallmentMonths,
+    exInstallmentNoInterest,
+    setExInstallmentNoInterest,
 
     reset
   };

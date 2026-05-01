@@ -23,7 +23,7 @@ export default function StationSearchSheet({ open, query, onQueryChange, onClose
   return (
     <div className="fixed inset-0 z-[60]">
       <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="닫기" />
-      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">{title}</div>

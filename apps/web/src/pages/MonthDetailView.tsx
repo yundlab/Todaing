@@ -78,7 +78,7 @@ export function MonthDetailView({
   }
 
   return (
-    <div className="min-h-dvh bg-white">
+    <div className="min-h-dvh bg-white pb-[calc(4.25rem+env(safe-area-inset-bottom))]">
       {header}
       {settlementDialog}
       <main>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   useCreateExpense,
@@ -24,12 +24,13 @@ import LoginScreen from "../components/LoginScreen";
 import { AUTH_USER_LS_KEY, type AuthUser } from "../lib/auth";
 import SettlementRecordDialog from "../components/SettlementRecordDialog";
 import StationSearchSheet, { type StationSearchTarget } from "../components/StationSearchSheet";
+import BottomNav from "../components/BottomNav";
 import ComposeSheet from "../components/ComposeSheet";
+import DateMonthInput from "../components/DateMonthInput";
 import ExpenseCard from "../components/ExpenseCard";
+import SettlementRow from "../components/SettlementRow";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { useExpenseComposeForm } from "../hooks/useExpenseComposeForm";
-import { useExpenseEditForm } from "../hooks/useExpenseEditForm";
-import { useScheduleEditForm } from "../hooks/useScheduleEditForm";
 import {
   dateFromSlotMinutes,
   daysInMonth,
@@ -41,6 +42,7 @@ import {
 } from "../domain/date";
 import { parseFlexibleTimeToMinutes } from "../domain/time";
 import { parseAmountInput } from "../domain/parseAmountInput";
+import { encodeScheduleNote, parseScheduleNote } from "../domain/scheduleNote";
 import {
   effectiveMonthlyBudgetWon,
   MONTHLY_BUDGET_BY_YM_LS_KEY,
@@ -52,6 +54,7 @@ import {
   formatWon,
   myShareAmountForMe,
   participantsCount,
+  participantsDisplayWithoutMe,
   settlementDeltaForMe,
   settlementLineForExpense,
   settlementTransfersForMe,
@@ -113,6 +116,34 @@ function tintForCategory(category: string): Tint {
   return CATEGORY_TINT_OVERRIDE[c] ?? GROUP_TINT[groupForCategory(c)];
 }
 
+/** 타임라인 카드 왼쪽과 동일 — 배경·테두리·이모지 */
+function CategoryCardPreview({ category }: { category: string }) {
+  const c = normalizeCategory(category);
+  const tint = tintForCategory(c);
+  return (
+    <div
+      className={cn(
+        "inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-2xl",
+        tint.border,
+        tint.bg
+      )}
+      aria-hidden
+    >
+      {emojiForCategory(c)}
+    </div>
+  );
+}
+
+/** 네이티브 select 화살표는 오른쪽에 붙어 보이므로 제거 후 여백 있는 커스텀 화살표 사용 */
+const CATEGORY_SELECT_CLASS =
+  "min-w-0 flex-1 cursor-pointer rounded-xl border border-slate-200 bg-white py-3 pl-3 pr-12 text-sm outline-none focus:border-slate-400 [appearance:none] [-webkit-appearance:none] [-moz-appearance:none]";
+const CATEGORY_SELECT_ARROW_STYLE: CSSProperties = {
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 0.875rem center",
+  backgroundSize: "1.125rem 1.125rem"
+};
+
 const PAYMENT_TYPE_LABEL: Record<Expense["paymentType"], string> = {
   CARD: "카드",
   CASH: "현금",
@@ -140,6 +171,103 @@ function chipClass(variant: "gray" | "orange" | "teal") {
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
+}
+
+const INSTALLMENT_MONTH_OPTIONS = Array.from({ length: 35 }, (_, i) => i + 2);
+
+function installmentPayload(
+  paymentType: Expense["paymentType"],
+  useInstallment: boolean,
+  months: number,
+  noInterest: boolean
+): {
+  installment: boolean;
+  installmentMonths: number | null;
+  installmentNoInterest: boolean;
+} {
+  if (paymentType !== "CARD" || !useInstallment) {
+    return { installment: false, installmentMonths: null, installmentNoInterest: false };
+  }
+  const m = Math.round(months);
+  if (!Number.isFinite(m) || m < 2 || m > 36) {
+    return { installment: false, installmentMonths: null, installmentNoInterest: false };
+  }
+  return {
+    installment: true,
+    installmentMonths: m,
+    installmentNoInterest: noInterest
+  };
+}
+
+function CardInstallmentFields(props: {
+  installment: boolean;
+  setInstallment: (v: boolean) => void;
+  months: number;
+  setMonths: (n: number) => void;
+  noInterest: boolean;
+  setNoInterest: (v: boolean) => void;
+}) {
+  return (
+    <div className="mt-2">
+      <div className="mb-1 text-xs text-slate-400">카드 결제 방식</div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={cn(
+            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+            !props.installment
+              ? "border-indigo-600 bg-indigo-600 text-white"
+              : "border-slate-200 bg-white text-slate-800"
+          )}
+          onClick={() => {
+            props.setInstallment(false);
+            props.setNoInterest(false);
+          }}
+        >
+          일시불
+        </button>
+        <button
+          type="button"
+          className={cn(
+            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+            props.installment
+              ? "border-indigo-600 bg-indigo-600 text-white"
+              : "border-slate-200 bg-white text-slate-800"
+          )}
+          onClick={() => props.setInstallment(true)}
+        >
+          할부
+        </button>
+      </div>
+      {props.installment ? (
+        <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-2">
+          <label className="min-w-[8rem] flex-1">
+            <div className="mb-1 text-xs text-slate-400">할부 개월 수</div>
+            <select
+              value={props.months}
+              onChange={(e) => props.setMonths(Number(e.target.value))}
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-3 text-sm outline-none focus:border-slate-400"
+            >
+              {INSTALLMENT_MONTH_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m}개월
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 pb-2.5">
+            <input
+              type="checkbox"
+              checked={props.noInterest}
+              onChange={(e) => props.setNoInterest(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-sm text-slate-800">무이자</span>
+          </label>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** 메인 예산 카드 — 오늘/이번달 지출 상세 진입 버튼 공통 스타일 */
@@ -179,6 +307,30 @@ function UserIcon({ className }: { className?: string }) {
       <path d="M20 21a8 8 0 0 0-16 0" />
       <circle cx="12" cy="9" r="4" />
     </svg>
+  );
+}
+
+function ScheduleDetailNoteBlock(props: { scheduleId: string; note: string | null }) {
+  const n = parseScheduleNote(props.note);
+  if (!n.people.length && !n.memo) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+        메모 없음
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {n.people.length ? (
+        <div className="flex min-w-0 items-start gap-2 text-sm font-medium text-slate-700">
+          <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+          <span className="min-w-0 break-words">{n.people.join(", ")}</span>
+        </div>
+      ) : null}
+      {n.memo ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">{n.memo}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -523,7 +675,7 @@ type TimelineItem =
       startMs: number;
       id: string;
       startAt: string;
-      endAt: string;
+      endAt: string | null;
       title: string;
       note: string | null;
       linkedExpenseSum: number;
@@ -533,6 +685,25 @@ type TimelineItem =
       startMs: number;
       expense: Expense;
     };
+
+/** 일정 시작~끝 구간 안에 occurredAt이 들어오는 지출 (일정+비용 동시 기록 등). 끝 시간 없으면 해당 날 23:59:59까지. */
+function expensesOccurringWithinSchedule(expenses: Expense[], schedule: ScheduleItem): Expense[] {
+  const s0 = new Date(schedule.startAt).getTime();
+  if (!Number.isFinite(s0)) return [];
+  let s1: number;
+  if (schedule.endAt) {
+    s1 = new Date(schedule.endAt).getTime();
+  } else {
+    const dayEnd = new Date(schedule.startAt);
+    dayEnd.setHours(23, 59, 59, 999);
+    s1 = dayEnd.getTime();
+  }
+  if (!Number.isFinite(s1) || s0 > s1) return [];
+  return expenses.filter((e) => {
+    const t = new Date(e.occurredAt).getTime();
+    return Number.isFinite(t) && t >= s0 && t <= s1;
+  });
+}
 
 function parseMainDayQuery(raw: string | null): Date | null {
   if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
@@ -629,17 +800,12 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const [settlementSheetOpen, setSettlementSheetOpen] = useState(false);
   const todayExpenseDetailOpen = view === "today";
   const monthExpenseDetailOpen = view === "month";
-  const [calendarPopoverOpen, setCalendarPopoverOpen] = useState(false);
-  const calendarInputRef = useRef<HTMLInputElement>(null as unknown as HTMLInputElement);
+  const calendarInputRef = useRef<HTMLInputElement>(null!);
   const [legacyBudgetFallback] = useState(() => readLegacyMonthlyBudgetWonFromStorage());
   const [budgetByYm] = useLocalStorageState<Record<string, number>>(MONTHLY_BUDGET_BY_YM_LS_KEY, {}, {
     parse: parseMonthlyBudgetByYm,
     serialize: serializeMonthlyBudgetByYm
   });
-
-  const [settledTransfersByExpenseId, setSettledTransfersByExpenseId] = useState<
-    Map<string, Set<string>>
-  >(() => new Map());
 
   const [settledNetByPeriodKey, setSettledNetByPeriodKey] = useLocalStorageState<
     Record<string, string[]>
@@ -706,13 +872,11 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const requestToggleNetSettledForDay = (day: string, other: string) => {
     const settled = isNetSettledForDay(day, other);
     if (settled) {
-      // If already settled, open editor instead of unchecking.
+      // 이미 완료면 기록 편집(일시·수단·메모). 미완료로 바꾸려면 다이얼로그에서 정산 해제.
       openSettlementLog(day, other, false);
       return;
     }
-    // Optimistically check, then ask for record. If user cancels, we revert.
     toggleNetSettledForDay(day, other);
-    openSettlementLog(day, other, true);
   };
 
   const settlementOthersForExpense = (e: Expense, me: string) => {
@@ -741,25 +905,6 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     );
     if (!others.length) return false;
     return others.every((o) => isNetSettledForDay(day, o));
-  };
-  const transferKey = (t: { from: string; to: string; amount: number }) =>
-    `${t.from}→${t.to}:${t.amount}`;
-  const isTransferSettled = (expenseId: string, key: string) =>
-    settledTransfersByExpenseId.get(expenseId)?.has(key) ?? false;
-  const toggleTransferSettled = (expenseId: string, key: string) =>
-    setSettledTransfersByExpenseId((prev) => {
-      const next = new Map(prev);
-      const set = new Set(next.get(expenseId) ?? []);
-      if (set.has(key)) set.delete(key);
-      else set.add(key);
-      next.set(expenseId, set);
-      return next;
-    });
-  const isExpenseFullySettled = (e: Expense, me: string) => {
-    const transfers = settlementTransfersForMe(e, me);
-    if (!transfers.length) return false;
-    const set = settledTransfersByExpenseId.get(e.id) ?? new Set<string>();
-    return transfers.every((t) => set.has(transferKey(t)));
   };
 
   const mainDayQuery = searchParams.get("day");
@@ -824,17 +969,6 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const { data: todaySummary } = useExpenseSummary(dayKey);
   useMonthlyExpenseSummary(monthKey);
 
-  useEffect(() => {
-    if (!calendarPopoverOpen) return;
-    const t = window.setTimeout(() => {
-      const el = calendarInputRef.current;
-      if (!el) return;
-      (el as any).showPicker?.();
-      el.focus();
-    }, 0);
-    return () => window.clearTimeout(t);
-  }, [calendarPopoverOpen]);
-
   const createExpense = useCreateExpense();
   const updateExpense = useUpdateExpense();
   const deleteExpense = useDeleteExpense();
@@ -843,6 +977,12 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   const deleteSchedule = useDeleteSchedule(dayKey);
 
   const [composeOpen, setComposeOpen] = useState(false);
+  /** 수정 모드일 때만 설정 (등록 폼과 동일 UI) */
+  const [composeEditExpenseId, setComposeEditExpenseId] = useState<string | null>(null);
+  const [composeEditScheduleId, setComposeEditScheduleId] = useState<string | null>(null);
+  /** 수정 중 탭으로 종류 전환 시: 새로 생성 후 원본 삭제 */
+  const [composeConvertFromExpenseId, setComposeConvertFromExpenseId] = useState<string | null>(null);
+  const [composeConvertFromScheduleId, setComposeConvertFromScheduleId] = useState<string | null>(null);
   const [composeDayKey, setComposeDayKey] = useState<string>(() => dayKey);
   const composeDayLocal00 = useMemo(() => {
     const d = new Date(`${composeDayKey}T00:00:00`);
@@ -850,10 +990,19 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     d.setHours(0, 0, 0, 0);
     return d;
   }, [composeDayKey, dayLocal00]);
+
+  useEffect(() => {
+    if (!composeOpen) setComposeDayKey(dayKey);
+  }, [composeOpen, dayKey]);
+
+  const [composeKind, setComposeKind] = useState<"expense" | "schedule">("expense");
+  const [scheduleWithExpense, setScheduleWithExpense] = useState(false);
+  const [schedulePayTimeText, setSchedulePayTimeText] = useState("");
+  const [schedulePeopleText, setSchedulePeopleText] = useState("");
+
   const [expenseDetailOpen, setExpenseDetailOpen] = useState<Expense | null>(null);
-  const [expenseEditOpen, setExpenseEditOpen] = useState<Expense | null>(null);
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState<ScheduleItem | null>(null);
-  const [scheduleEditOpen, setScheduleEditOpen] = useState<ScheduleItem | null>(null);
+  const [scheduleDetailTab, setScheduleDetailTab] = useState<"schedule" | "expense">("schedule");
 
   const {
     entryStartText,
@@ -884,62 +1033,27 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     setExpenseScope,
     sharedNamesText,
     setSharedNamesText,
+    exInstallment,
+    setExInstallment,
+    exInstallmentMonths,
+    setExInstallmentMonths,
+    exInstallmentNoInterest,
+    setExInstallmentNoInterest,
     reset: resetComposeForm
   } = useExpenseComposeForm();
 
-  const {
-    editAmount,
-    setEditAmount,
-    editCategory,
-    setEditCategory,
-    editMerchant,
-    setEditMerchant,
-    editDetail,
-    setEditDetail,
-    editTimeText,
-    setEditTimeText,
-    editEndTimeText,
-    setEditEndTimeText,
-    editPaymentType,
-    setEditPaymentType,
-    editPaymentLabel,
-    setEditPaymentLabel,
-    editPayerPreset,
-    setEditPayerPreset,
-    editPayerOther,
-    setEditPayerOther,
-    editExpenseScope,
-    setEditExpenseScope,
-    editSharedNamesText,
-    setEditSharedNamesText
-  } = useExpenseEditForm();
-
-  const {
-    editSchedStart,
-    setEditSchedStart,
-    editSchedEnd,
-    setEditSchedEnd,
-    editSchedCategory,
-    setEditSchedCategory,
-    editSchedTitle,
-    setEditSchedTitle,
-    editSchedNote,
-    setEditSchedNote,
-    editSchedAmount,
-    setEditSchedAmount,
-    editSchedPaymentType,
-    setEditSchedPaymentType,
-    editSchedPaymentLabel,
-    setEditSchedPaymentLabel,
-    editSchedPayerPreset,
-    setEditSchedPayerPreset,
-    editSchedPayerOther,
-    setEditSchedPayerOther,
-    editSchedExpenseScope,
-    setEditSchedExpenseScope,
-    editSchedSharedNamesText,
-    setEditSchedSharedNamesText
-  } = useScheduleEditForm();
+  const handleComposeClose = useCallback(() => {
+    setComposeOpen(false);
+    setComposeEditExpenseId(null);
+    setComposeEditScheduleId(null);
+    setComposeConvertFromExpenseId(null);
+    setComposeConvertFromScheduleId(null);
+    setComposeKind("expense");
+    setScheduleWithExpense(false);
+    setSchedulePayTimeText("");
+    setSchedulePeopleText("");
+    resetComposeForm();
+  }, [resetComposeForm]);
   // 교통2 (기차/시외/택시/비행기) - 단일 구간
   const [exTransitMode, setExTransitMode] = useState<string>("🚆"); // 교통2: 🚆🚍🚖✈️
   const [exTransitFromText, setExTransitFromText] = useState<string>("");
@@ -970,6 +1084,276 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       .filter((e) => yyyyMmDdLocal(new Date(e.occurredAt)) === dayKey)
       .sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
   }, [expensesData, dayKey]);
+
+  function fillComposeFromExpense(e: Expense) {
+    setComposeEditScheduleId(null);
+    setComposeEditExpenseId(e.id);
+    setComposeDayKey(yyyyMmDdLocal(new Date(e.occurredAt)));
+    setComposeKind("expense");
+    setScheduleWithExpense(false);
+    setSchedulePayTimeText("");
+    setSchedulePeopleText("");
+    const od = new Date(e.occurredAt);
+    setEntryStartText(`${pad2(od.getHours())}:${pad2(od.getMinutes())}`);
+    if (e.endAt) {
+      const ed = new Date(e.endAt);
+      setEntryEndText(`${pad2(ed.getHours())}:${pad2(ed.getMinutes())}`);
+    } else {
+      setEntryEndText("");
+    }
+    setEntryCategory(e.category);
+    const rawDetail = e.detail?.trim() ?? "";
+    if (rawDetail.includes(" · ")) {
+      const idx = rawDetail.indexOf(" · ");
+      setEntryTitle(rawDetail.slice(0, idx));
+      setExDetail(rawDetail.slice(idx + 3));
+    } else {
+      setEntryTitle("");
+      setExDetail(rawDetail);
+    }
+    setExMerchant(e.merchant ?? "");
+    setEntryNote(e.memo ?? "");
+    setExAmount(String(e.amount));
+    setExPaymentType(e.paymentType);
+    setExPaymentLabel(e.paymentMethodLabel ?? "");
+    setExInstallment(e.paymentType === "CARD" && !!e.installment);
+    setExInstallmentMonths(
+      e.paymentType === "CARD" &&
+        e.installment &&
+        e.installmentMonths != null &&
+        e.installmentMonths >= 2 &&
+        e.installmentMonths <= 36
+        ? e.installmentMonths
+        : 2
+    );
+    setExInstallmentNoInterest(
+      e.paymentType === "CARD" && !!e.installment && !!e.installmentNoInterest
+    );
+    const owner = e.paymentOwner ?? "나";
+    setPayerPreset(owner === "나" ? "나" : "기타");
+    setPayerOther(owner === "나" ? "" : owner);
+    setExpenseScope(e.scope ?? "PERSONAL");
+    setSharedNamesText(
+      Array.isArray(e.participants) ? (e.participants as unknown[]).map(String).join(", ") : ""
+    );
+
+    if (normalizeCategory(e.category) === "교통1") {
+      const seg = e.transitSegments;
+      if (Array.isArray(seg) && seg.length) {
+        setTransitLegs(() => {
+          const mapped = seg
+            .map((s) => {
+              if (!s || typeof s !== "object") return null;
+              const anyS: Record<string, unknown> = s as Record<string, unknown>;
+              if (anyS.mode === "BUS") {
+                return {
+                  mode: "BUS" as const,
+                  start: String(anyS.start ?? "09:00"),
+                  end: String(anyS.end ?? "09:30"),
+                  busNumber: String(anyS.busNumber ?? ""),
+                  from: String(anyS.from ?? ""),
+                  to: String(anyS.to ?? "")
+                };
+              }
+              if (anyS.mode === "SUBWAY") {
+                return {
+                  mode: "SUBWAY" as const,
+                  start: String(anyS.start ?? "09:00"),
+                  end: String(anyS.end ?? "09:30"),
+                  from: null,
+                  to: null,
+                  line: String(anyS.line ?? "")
+                };
+              }
+              return null;
+            })
+            .filter(Boolean) as TransitLeg[];
+          return mapped.length
+            ? mapped
+            : [
+                {
+                  mode: "SUBWAY",
+                  start: "09:00",
+                  end: "09:30",
+                  from: null,
+                  to: null,
+                  line: ""
+                }
+              ];
+        });
+      } else {
+        setTransitLegs([
+          { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
+        ]);
+      }
+    } else {
+      setTransitLegs([
+        { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
+      ]);
+    }
+    if (normalizeCategory(e.category) === "교통2") {
+      const seg0 = Array.isArray(e.transitSegments) && e.transitSegments.length ? (e.transitSegments[0] as any) : null;
+      const mode = (e.transitMode ?? (typeof seg0?.mode === "string" ? String(seg0.mode) : "")).trim() || "🚆";
+      const from =
+        (e.transitFrom ?? (typeof seg0?.from === "string" ? String(seg0.from) : "")).trim();
+      const to =
+        (e.transitTo ?? (typeof seg0?.to === "string" ? String(seg0.to) : "")).trim();
+      setExTransitMode(mode);
+      setExTransitFromText(from);
+      setExTransitToText(to);
+    } else {
+      setExTransitMode("🚆");
+      setExTransitFromText("");
+      setExTransitToText("");
+    }
+  }
+
+  function fillComposeFromSchedule(full: ScheduleItem, linked: Expense[]) {
+    setComposeEditExpenseId(null);
+    setComposeEditScheduleId(full.id);
+    setComposeDayKey(yyyyMmDdLocal(new Date(full.startAt)));
+    setComposeKind("schedule");
+    setScheduleWithExpense(false);
+    setSchedulePayTimeText("");
+
+    const s = new Date(full.startAt);
+    const startHhMm = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
+    const endHhMm = full.endAt
+      ? `${pad2(new Date(full.endAt).getHours())}:${pad2(new Date(full.endAt).getMinutes())}`
+      : "";
+    setEntryStartText(startHhMm);
+    setEntryEndText(endHhMm);
+    const parsed = parseEmojiPrefixedTitle(full.title);
+    setEntryCategory(parsed.category);
+    setEntryTitle(parsed.content);
+    const np = parseScheduleNote(full.note);
+    setSchedulePeopleText(np.people.join(", "));
+    const stripTransit2Line = (raw: string) =>
+      raw
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(
+          (s) =>
+            !(
+              s.includes("→") &&
+              (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈"))
+            )
+        )
+        .join("\n")
+        .trim();
+    setEntryNote(stripTransit2Line(np.memo ?? ""));
+
+    setExAmount("");
+    setExMerchant("");
+    setExDetail("");
+    setExPaymentType("CARD");
+    setExPaymentLabel("");
+    setPayerPreset("나");
+    setPayerOther("");
+    setExpenseScope("PERSONAL");
+    setSharedNamesText("");
+    setExInstallment(false);
+    setExInstallmentMonths(2);
+    setExInstallmentNoInterest(false);
+
+    if (parsed.category === "교통1") {
+      const trEx = linked.find((x) => normalizeCategory(x.category) === "교통1");
+      const seg = trEx?.transitSegments;
+      if (Array.isArray(seg) && seg.length) {
+        setTransitLegs(() => {
+          const mapped = seg
+            .map((el) => {
+              if (!el || typeof el !== "object") return null;
+              const anyS: Record<string, unknown> = el as Record<string, unknown>;
+              if (anyS.mode === "BUS") {
+                return {
+                  mode: "BUS" as const,
+                  start: String(anyS.start ?? "09:00"),
+                  end: String(anyS.end ?? "09:30"),
+                  busNumber: String(anyS.busNumber ?? ""),
+                  from: String(anyS.from ?? ""),
+                  to: String(anyS.to ?? "")
+                };
+              }
+              if (anyS.mode === "SUBWAY") {
+                return {
+                  mode: "SUBWAY" as const,
+                  start: String(anyS.start ?? "09:00"),
+                  end: String(anyS.end ?? "09:30"),
+                  from: null,
+                  to: null,
+                  line: String(anyS.line ?? "")
+                };
+              }
+              return null;
+            })
+            .filter(Boolean) as TransitLeg[];
+          return mapped.length
+            ? mapped
+            : [
+                {
+                  mode: "SUBWAY" as const,
+                  start: startHhMm,
+                  end: endHhMm || startHhMm,
+                  from: null,
+                  to: null,
+                  line: ""
+                }
+              ];
+        });
+      } else {
+        setTransitLegs([
+          {
+            mode: "SUBWAY",
+            start: startHhMm,
+            end: endHhMm || startHhMm,
+            from: null,
+            to: null,
+            line: ""
+          }
+        ]);
+      }
+    } else {
+      setTransitLegs([
+        { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
+      ]);
+    }
+    if (parsed.category === "교통2") {
+      const tr2 = linked.find((x) => normalizeCategory(x.category) === "교통2");
+      if (tr2) {
+        setExTransitMode(tr2.transitMode ?? "🚆");
+        setExTransitFromText(tr2.transitFrom ?? "");
+        setExTransitToText(tr2.transitTo ?? "");
+      } else {
+        const memo = np.memo ?? "";
+        const transitLine = memo
+          .split("\n")
+          .map((s) => s.trim())
+          .find((s) => s.includes("→") && (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈")));
+        if (transitLine) {
+          const token = transitLine.trimStart().split(/\s+/)[0] ?? "";
+          const rest = transitLine.trimStart().slice(token.length).trim();
+          const [fromRaw, toRaw] = rest.split("→").map((s) => s.trim());
+          setExTransitMode(token || "🚆");
+          setExTransitFromText(fromRaw ?? "");
+          setExTransitToText(toRaw ?? "");
+        } else {
+          setExTransitMode("🚆");
+          setExTransitFromText("");
+          setExTransitToText("");
+        }
+      }
+    } else {
+      setExTransitMode("🚆");
+      setExTransitFromText("");
+      setExTransitToText("");
+    }
+  }
+
+  const scheduleDetailLinkedExpenses = useMemo(() => {
+    if (!scheduleDetailOpen) return [];
+    return expensesOccurringWithinSchedule(todayExpenses, scheduleDetailOpen);
+  }, [scheduleDetailOpen, todayExpenses]);
 
   const monthToDateTotal = useMemo(() => {
     const items = expensesData?.items ?? [];
@@ -1080,15 +1464,25 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
   ]);
 
   const timeline = useMemo(() => {
-    // Treat everything as expense; schedules are not shown.
     const expenses = todayExpenses;
     const expenseItems: TimelineItem[] = expenses.map((e) => ({
       kind: "expense",
       startMs: new Date(e.occurredAt).getTime(),
       expense: e
     }));
-    return expenseItems.sort((a, b) => a.startMs - b.startMs);
-  }, [todayExpenses]);
+    const schedules = scheduleData?.items ?? [];
+    const scheduleItems: TimelineItem[] = schedules.map((s) => ({
+      kind: "schedule",
+      startMs: new Date(s.startAt).getTime(),
+      id: s.id,
+      startAt: s.startAt,
+      endAt: s.endAt,
+      title: s.title,
+      note: s.note,
+      linkedExpenseSum: 0
+    }));
+    return [...scheduleItems, ...expenseItems].sort((a, b) => a.startMs - b.startMs);
+  }, [todayExpenses, scheduleData?.items]);
 
   if (!authUser) {
     return (
@@ -1110,8 +1504,6 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       dayKey={dayKey}
       monthKey={monthKey}
       monthMode={monthExpenseDetailOpen}
-      calendarPopoverOpen={calendarPopoverOpen}
-      setCalendarPopoverOpen={setCalendarPopoverOpen}
       calendarInputRef={calendarInputRef}
       onPick={(d) => setSelectedDay(d)}
       onPrev={() => {
@@ -1189,31 +1581,37 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
 
   if (monthExpenseDetailOpen) {
     return (
-      <MonthDetailView
-        header={headerEl}
-        settlementDialog={settlementRecordDialogEl}
-        expenses={expensesData?.items}
-        monthKey={monthKey}
-        monthlyBudgetWon={monthlyBudgetWon}
-        me="나"
-        isNetSettledForDay={isNetSettledForDay}
-        requestToggleNetSettledForDay={requestToggleNetSettledForDay}
-      />
+      <>
+        <MonthDetailView
+          header={headerEl}
+          settlementDialog={settlementRecordDialogEl}
+          expenses={expensesData?.items}
+          monthKey={monthKey}
+          monthlyBudgetWon={monthlyBudgetWon}
+          me="나"
+          isNetSettledForDay={isNetSettledForDay}
+          requestToggleNetSettledForDay={requestToggleNetSettledForDay}
+        />
+        <BottomNav />
+      </>
     );
   }
 
   if (todayExpenseDetailOpen) {
     return (
-      <TodayDetailView
-        header={headerEl}
-        settlementDialog={settlementRecordDialogEl}
-        todayExpenses={todayExpenses}
-        budgetUi={budgetUi}
-        settlementToday={settlementToday}
-        dayKey={dayKey}
-        isNetSettledForDay={isNetSettledForDay}
-        requestToggleNetSettledForDay={requestToggleNetSettledForDay}
-      />
+      <>
+        <TodayDetailView
+          header={headerEl}
+          settlementDialog={settlementRecordDialogEl}
+          todayExpenses={todayExpenses}
+          budgetUi={budgetUi}
+          settlementToday={settlementToday}
+          dayKey={dayKey}
+          isNetSettledForDay={isNetSettledForDay}
+          requestToggleNetSettledForDay={requestToggleNetSettledForDay}
+        />
+        <BottomNav />
+      </>
     );
   }
 
@@ -1221,7 +1619,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
     <div className="min-h-dvh">
       {headerEl}
 
-      <main className="mx-auto w-full max-w-md px-4 pb-6 pt-2">
+      <main className="mx-auto w-full max-w-md px-4 pb-[calc(10rem+env(safe-area-inset-bottom))] pt-2">
         {expensesError || scheduleError ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             API 연결 실패. 서버 실행 상태를 확인하세요.
@@ -1277,7 +1675,10 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                   </span>
                   <span className="text-sm font-semibold text-slate-400">원</span>
                 </div>
-                <div className="mt-1 text-xs text-slate-500">오늘 예산 {formatWon(Math.round(budgetUi.dailyBudget))}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  예산 {formatWon(Math.round(budgetUi.dailyBudget))} · 남음{" "}
+                  {formatWon(Math.round(budgetUi.dailyBudget - budgetUi.todayTotal))}
+                </div>
               </div>
               <button
                 type="button"
@@ -1359,6 +1760,16 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 const parsedTitle = parseEmojiPrefixedTitle(it.title);
                 const cat = normalizeCategory(parsedTitle.category);
                 const tint = tintForCategory(cat);
+                const schedNote = parseScheduleNote(it.note);
+                const scheduleTransitIcon =
+                  cat === "교통2"
+                    ? (() => {
+                        const memo = schedNote.memo ?? "";
+                        const firstToken = memo.trimStart().split(/\s+/)[0] ?? "";
+                        // e.g. "✈️ 서울 → 제주" → "✈️"
+                        return firstToken ? firstToken : null;
+                      })()
+                    : null;
                 return (
                   <li key={`s-${it.id}`}>
                     <button
@@ -1366,42 +1777,8 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                       onClick={() => {
                         const full = (scheduleData?.items ?? []).find((s) => s.id === it.id);
                         if (!full) return;
-                        // 카드 클릭 시 바로 "기록 수정" 폼 열기 (작성 폼과 동일한 편집 흐름)
-                        setScheduleEditOpen(full);
-                        const s = new Date(full.startAt);
-                        const e = new Date(full.endAt);
-                        setEditSchedStart(`${pad2(s.getHours())}:${pad2(s.getMinutes())}`);
-                        setEditSchedEnd(`${pad2(e.getHours())}:${pad2(e.getMinutes())}`);
-                        const parsed = parseEmojiPrefixedTitle(full.title);
-                        setEditSchedCategory(parsed.category);
-                        setEditSchedTitle(parsed.content);
-                        setEditSchedNote(full.note ?? "");
-                        setEditSchedAmount("");
-                        setEditSchedPaymentType("CARD");
-                        setEditSchedPaymentLabel("");
-                        setEditSchedPayerPreset("나");
-                        setEditSchedPayerOther("");
-                        setEditSchedExpenseScope("PERSONAL");
-                        setEditSchedSharedNamesText("");
-
-                        // 교통 카테고리면 작성 폼과 같은 입력 UI 기본값 동기화
-                        if (parsed.category === "교통1") {
-                          setTransitLegs([
-                            {
-                              mode: "SUBWAY",
-                              start: `${pad2(s.getHours())}:${pad2(s.getMinutes())}`,
-                              end: `${pad2(e.getHours())}:${pad2(e.getMinutes())}`,
-                              from: null,
-                              to: null,
-                              line: ""
-                            }
-                          ]);
-                        }
-                        if (parsed.category === "교통2") {
-                          setExTransitMode("🚆");
-                          setExTransitFromText("");
-                          setExTransitToText("");
-                        }
+                        setScheduleDetailTab("schedule");
+                        setScheduleDetailOpen(full);
                       }}
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -1413,24 +1790,34 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                               tint.bg
                             )}
                           >
-                            {emojiForCategory(cat)}
+                            {scheduleTransitIcon ?? emojiForCategory(cat)}
                           </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-base font-semibold text-slate-900">
+                          <div className="min-w-0 flex-1">
+                            <div className="break-words text-left text-base font-semibold leading-snug text-slate-900">
                               {parsedTitle.content || it.title}
                             </div>
-                            <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-slate-400">
-                              <span className="inline-flex items-center gap-1">
+                            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-400">
+                              <span className="inline-flex shrink-0 items-center gap-1">
                                 <ClockIcon className="h-4 w-4 text-slate-300" />
                                 <span className="tabular-nums">
                                   {timeRangeLabel(it.startAt, it.endAt)}
                                 </span>
                               </span>
-                              {it.note ? (
-                                <>
-                                  <span>·</span>
-                                  <span className="truncate">{it.note}</span>
-                                </>
+                              {schedNote.people.length ? (
+                                <span
+                                  className="inline-flex min-w-0 max-w-full items-start gap-1"
+                                  aria-label={`함께한 사람 ${schedNote.people.join(", ")}`}
+                                >
+                                  <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+                                  <span className="min-w-0 break-words normal-case">
+                                    {schedNote.people.join(", ")}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {schedNote.memo ? (
+                                <span className="min-w-0 max-w-full flex-[1_1_100%] break-words normal-case">
+                                  {schedNote.memo}
+                                </span>
                               ) : null}
                             </div>
                           </div>
@@ -1447,47 +1834,26 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
               const e = it.expense;
               const tint = tintForCategory(e.category || "기타");
               const settlementLine = settlementLineForExpense(e, "나");
-              const isSettled = isExpenseNetSettledForDay(dayKey, e, "나") || isExpenseFullySettled(e, "나");
-              const settlementRecText =
-                isSettled && settlementLine
+              const isSettled = isExpenseNetSettledForDay(dayKey, e, "나");
+              const memoText = (e.detail ?? e.memo ?? "").trim();
+              const expenseTransitIcon =
+                normalizeCategory(e.category) === "교통2"
                   ? (() => {
-                      const others = settlementOthersForExpense(e, "나");
-                      const recs = others.map((o) => ({ other: o, rec: getSettlementRecordForDay(dayKey, o) }));
-                      const first = recs.find((x) => x.rec)?.rec;
-                      if (!first) return null;
-                      const methodText = normalizeLegacySettlementMethod(first.method);
-                      const extra = recs.filter((x) => x.rec).length;
-                      const extraPart = extra > 1 ? ` 외 ${extra - 1}` : "";
-                      return `${first.paidAtLocal.replace("T", " ")} · ${methodText}${extraPart}`;
+                      const direct = (e.transitMode ?? "").trim();
+                      if (direct) return direct;
+                      const seg = e.transitSegments;
+                      if (!Array.isArray(seg) || !seg.length) return null;
+                      const first = seg[0] as any;
+                      const m = typeof first?.mode === "string" ? String(first.mode).trim() : "";
+                      return m || null;
                     })()
                   : null;
-              const openSettlementEditorFromTag = () => {
-                const others = settlementOthersForExpense(e, "나");
-                if (!others.length) {
-                  setExpenseDetailOpen(e);
-                  return;
-                }
-                const hasRecord = others.some((o) => getSettlementRecordForDay(dayKey, o));
-                const netDone = isExpenseNetSettledForDay(dayKey, e, "나");
-                if (hasRecord || netDone) {
-                  const other =
-                    others.find((o) => getSettlementRecordForDay(dayKey, o)) ??
-                    others.find((o) => isNetSettledForDay(dayKey, o)) ??
-                    others[0]!;
-                  openSettlementLog(dayKey, other, false);
-                  return;
-                }
-                if (isExpenseFullySettled(e, "나")) {
-                  setExpenseDetailOpen(e);
-                  return;
-                }
-                setExpenseDetailOpen(e);
-              };
-              const onSettlementTagClick = (ev: MouseEvent | KeyboardEvent) => {
-                ev.stopPropagation();
-                if ("preventDefault" in ev) ev.preventDefault();
-                openSettlementEditorFromTag();
-              };
+              const peopleLabel =
+                e.scope === "SHARED" && Array.isArray(e.participants) && e.participants.length
+                  ? participantsDisplayWithoutMe(e.participants, "나")
+                  : (e.paymentOwner ?? "-");
+              const methodLabel =
+                e.paymentType === "CASH" ? "현금" : e.paymentMethodLabel || PAYMENT_TYPE_LABEL[e.paymentType];
               return (
                 <li key={`e-${e.id}`}>
                   <ExpenseCard
@@ -1500,7 +1866,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                           tint.bg
                         )}
                       >
-                        {emojiForCategory(e.category)}
+                        {expenseTransitIcon ?? emojiForCategory(e.category)}
                       </div>
                     }
                     title={e.merchant ?? normalizeCategory(e.category)}
@@ -1537,7 +1903,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                     }
                     meta={
                       <>
-                        <span className="inline-flex items-center gap-1">
+                        <span className="inline-flex shrink-0 items-center gap-1">
                           <ClockIcon className="h-4 w-4 text-slate-300" />
                           <span className="tabular-nums">
                             {e.endAt
@@ -1545,28 +1911,17 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                               : expenseTimeLabel(e.occurredAt, dayLocal00)}
                           </span>
                         </span>
-                        <span>·</span>
-                        <span className="inline-flex items-center gap-1">
-                          <UserIcon className="h-4 w-4 text-slate-300" />
-                          <span>{e.paymentOwner ?? "-"}</span>
+                        <span className="shrink-0">·</span>
+                        <span className="inline-flex min-w-0 max-w-full items-start gap-1">
+                          <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+                          <span className="min-w-0 break-words">{peopleLabel}</span>
                         </span>
-                        <span>·</span>
-                        <span className="inline-flex items-center gap-1">
-                          <MoneyIcon className="h-4 w-4 text-slate-300" />
-                          <span>
-                            {e.paymentType === "CASH"
-                              ? "현금"
-                              : e.paymentMethodLabel || PAYMENT_TYPE_LABEL[e.paymentType]}
-                          </span>
+                        <span className="shrink-0">·</span>
+                        <span className="inline-flex min-w-0 max-w-full items-start gap-1">
+                          <MoneyIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+                          <span className="min-w-0 break-words">{methodLabel}</span>
                         </span>
                       </>
-                    }
-                    quote={
-                      e.detail || e.memo ? (
-                        <div className="line-clamp-1 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          “{e.detail ?? e.memo ?? ""}”
-                        </div>
-                      ) : null
                     }
                     amount={
                       e.amount > 0 ? (
@@ -1577,46 +1932,41 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                           <span className="text-xs font-semibold text-slate-400">원</span>
                         </div>
                       ) : (
-                        <div className="text-lg font-semibold tabular-nums text-slate-300"> </div>
+                        <div className="text-right text-xs font-semibold tabular-nums text-slate-400">
+                          금액 미입력
+                        </div>
                       )
                     }
                     settlement={
-                      settlementLine ? (
+                      memoText || settlementLine ? (
                         <>
-                          <span
-                            className={cn(
-                              "min-w-0 flex-1 text-left text-[11px] font-semibold leading-snug text-slate-400",
-                              settlementRecText ? "pl-[calc(3rem+0.75rem)]" : ""
-                            )}
-                          >
-                            {settlementRecText ?? ""}
-                          </span>
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            className="inline-flex shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-indigo-500"
-                            onClick={onSettlementTagClick}
-                            onKeyDown={(ev) => {
-                              if (ev.key === "Enter" || ev.key === " ") onSettlementTagClick(ev);
-                            }}
-                          >
-                            <div
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold",
-                                isSettled
-                                  ? "bg-slate-100 text-slate-500"
-                                  : settlementLine.kind === "receive"
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-rose-50 text-rose-700"
-                              )}
-                            >
-                              <span className="opacity-80">🏷</span>
-                              <span className="tabular-nums">
-                                {settlementLine.kind === "receive" ? "+" : "-"}
-                                {formatWon(settlementLine.amount)}
-                              </span>
+                          <div className="min-w-0 flex-1">
+                            {memoText ? (
+                              <div className="ml-[calc(3rem+0.75rem)] truncate rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
+                                “{memoText}”
+                              </div>
+                            ) : null}
+                          </div>
+                          {settlementLine ? (
+                            <div className="flex shrink-0 items-center justify-end">
+                              <div
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold",
+                                  isSettled
+                                    ? "bg-slate-100 text-slate-500"
+                                    : settlementLine.kind === "receive"
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : "bg-rose-50 text-rose-700"
+                                )}
+                              >
+                                <span className="opacity-80">🏷</span>
+                                <span className="tabular-nums">
+                                  {settlementLine.kind === "receive" ? "+" : "-"}
+                                  {formatWon(settlementLine.amount)}
+                                </span>
+                              </div>
                             </div>
-                          </span>
+                          ) : null}
                         </>
                       ) : null
                     }
@@ -1628,13 +1978,20 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         </section>
       </main>
 
-      {/* FAB (keep inside mobile-first width) */}
-      <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+16px)] z-40">
+      {/* FAB — 하단 네비 위로 */}
+      <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-40">
         <div className="mx-auto flex w-full max-w-md justify-end px-6">
           <button
             className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.99]"
             onClick={() => {
+              setComposeEditExpenseId(null);
+              setComposeEditScheduleId(null);
               setComposeDayKey(dayKey);
+              setComposeKind("expense");
+              setScheduleWithExpense(false);
+              setSchedulePayTimeText("");
+              setSchedulePeopleText("");
+              resetComposeForm();
               setComposeOpen(true);
             }}
             aria-label="기록하기"
@@ -1660,46 +2017,376 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         </div>
       </div>
 
+      <BottomNav />
+
       {/* Unified compose sheet */}
       <ComposeSheet
         open={composeOpen}
-        title="기록 작성"
+        title={
+          composeEditExpenseId ||
+          composeEditScheduleId ||
+          composeConvertFromExpenseId ||
+          composeConvertFromScheduleId
+            ? "기록 수정"
+            : "기록 작성"
+        }
         subtitle={composeDayKey}
-        onClose={() => setComposeOpen(false)}
+        onClose={handleComposeClose}
         footer={
           <button
             className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-            disabled={createSchedule.isPending || createExpense.isPending}
+            disabled={
+              createSchedule.isPending ||
+              createExpense.isPending ||
+              updateExpense.isPending ||
+              updateSchedule.isPending
+            }
             onClick={async () => {
+              const convertFromExpenseId = composeConvertFromExpenseId;
+              const convertFromScheduleId = composeConvertFromScheduleId;
               const category = entryCategory.trim();
               if (!category) {
                 window.alert("카테고리를 선택해줘.");
                 return;
               }
-              const title = entryTitle.trim();
-              if (!title) {
+              const derivedTransitTitle = (() => {
+                const catNorm = normalizeCategory(category);
+                if (catNorm === "교통2") {
+                  const from = exTransitFromText.trim();
+                  const to = exTransitToText.trim();
+                  if (from || to) return `${from || "?"} → ${to || "?"}`.trim();
+                  return "이동";
+                }
+                if (catNorm === "교통1") {
+                  const first = transitLegs[0];
+                  const last = transitLegs[transitLegs.length - 1];
+                  const from =
+                    first?.mode === "BUS" ? (first.from || "") : (first?.from?.name ?? "");
+                  const to = last?.mode === "BUS" ? (last.to || "") : (last?.to?.name ?? "");
+                  if (from || to) return `${from || "?"} → ${to || "?"}`.trim();
+                  return "이동";
+                }
+                return "";
+              })();
+              const title = entryTitle.trim() || derivedTransitTitle;
+              if (!title.trim()) {
                 window.alert("내용을 입력해줘.");
                 return;
               }
+
+              const catNormForTime = normalizeCategory(category);
+              const startMin =
+                !entryStartText.trim() && catNormForTime === "교통2"
+                  ? 0
+                  : parseFlexibleTimeToMinutes(entryStartText);
+              if (startMin == null) {
+                window.alert("시작 시간을 확인해줘.");
+                return;
+              }
+
+              const transit = isTransitCategory;
+              // 지출(교통)은 도착시간이 필수지만, 일정(교통)은 도착시간 없이도 저장 가능하게 둔다.
+              const endRequired = false;
+
+              if (composeEditScheduleId) {
+                const eMin = entryEndText.trim() ? parseFlexibleTimeToMinutes(entryEndText) : null;
+                if (eMin != null && !(startMin < eMin)) {
+                  window.alert("끝 시간은 시작보다 늦아야 해.");
+                  return;
+                }
+                const catNorm = normalizeCategory(category);
+                const startAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
+                const endAt =
+                  eMin != null ? dateFromSlotMinutes(composeDayLocal00, eMin).toISOString() : null;
+                const scheduleTitle = `${emojiForCategory(catNorm)} ${title}`.trim();
+                const transitMemo =
+                  catNorm === "교통2"
+                    ? (() => {
+                        const from = exTransitFromText.trim();
+                        const to = exTransitToText.trim();
+                        if (!from && !to) return "";
+                        return `${exTransitMode} ${from || "?"} → ${to || "?"}`.trim();
+                      })()
+                    : "";
+                const stripTransit2Line = (raw: string) =>
+                  raw
+                    .split("\n")
+                    .map((s) => s.trim())
+                    .filter(
+                      (s) =>
+                        !(
+                          s.includes("→") &&
+                          (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈"))
+                        )
+                    )
+                    .join("\n")
+                    .trim();
+                const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
+                const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
+                const note = encodeScheduleNote(schedulePeopleText, mergedNote);
+                await updateSchedule.mutateAsync({
+                  id: composeEditScheduleId,
+                  input: {
+                    startAt,
+                    endAt,
+                    title: scheduleTitle,
+                    note
+                  }
+                });
+                handleComposeClose();
+                return;
+              }
+
+              if (composeEditExpenseId) {
+                if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
+                  window.alert("기타 결제수단 이름을 입력해줘.");
+                  return;
+                }
+                const merchantTrim = exMerchant.trim();
+                if (!transit && !merchantTrim) {
+                  window.alert("결제처를 입력해줘.");
+                  return;
+                }
+                const parsedAmount = parseAmountInput(exAmount);
+                if (parsedAmount == null) {
+                  window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
+                  return;
+                }
+                const endMinParsed = entryEndText.trim()
+                  ? parseFlexibleTimeToMinutes(entryEndText)
+                  : null;
+                if (endMinParsed != null && !(startMin < endMinParsed)) {
+                  window.alert("끝 시간은 시작보다 늦아야 해.");
+                  return;
+                }
+                const endMin = endMinParsed;
+                const occurredAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
+                const endAt =
+                  endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
+                const catNorm = normalizeCategory(category);
+                const payerName =
+                  payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
+                const participants =
+                  expenseScope === "SHARED"
+                    ? Array.from(
+                        new Set(
+                          sharedNamesText
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        )
+                      )
+                    : null;
+                const participantsAll =
+                  expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+                const detailCombined =
+                  [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
+                const transitPayload = buildTransitPayload(catNorm, {
+                  legs: transitLegs,
+                  transit2: {
+                    mode: exTransitMode,
+                    start: entryStartText.trim(),
+                    end: entryEndText.trim(),
+                    fromText: exTransitFromText,
+                    toText: exTransitToText
+                  }
+                });
+                await updateExpense.mutateAsync({
+                  id: composeEditExpenseId,
+                  input: {
+                    occurredAt,
+                    endAt,
+                    amount: parsedAmount,
+                    category: catNorm,
+                    paymentType: exPaymentType,
+                    paymentMethodLabel:
+                      exPaymentType === "CASH"
+                        ? null
+                        : exPaymentLabel.trim()
+                          ? exPaymentLabel.trim()
+                          : null,
+                    paymentOwner: payerName,
+                    scope: expenseScope,
+                    participants: participantsAll,
+                    merchant: merchantTrim ? merchantTrim : null,
+                    detail: detailCombined,
+                    memo: entryNote.trim() ? entryNote.trim() : null,
+                    ...installmentPayload(
+                      exPaymentType,
+                      exInstallment,
+                      exInstallmentMonths,
+                      exInstallmentNoInterest
+                    ),
+                    ...transitPayload
+                  }
+                });
+                handleComposeClose();
+                return;
+              }
+
+              const endMinParsed = entryEndText.trim()
+                ? parseFlexibleTimeToMinutes(entryEndText)
+                : null;
+
+              let endMin: number | null = null;
+              if (endRequired) {
+                if (endMinParsed == null) {
+                  window.alert("끝 시간을 입력해줘.");
+                  return;
+                }
+                endMin = endMinParsed;
+                if (!(startMin < endMin)) {
+                  window.alert("끝 시간은 시작보다 늦아야 해.");
+                  return;
+                }
+              } else if (endMinParsed != null) {
+                if (!(startMin < endMinParsed)) {
+                  window.alert("끝 시간은 시작보다 늦아야 해.");
+                  return;
+                }
+                endMin = endMinParsed;
+              }
+
+              const startAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
+              const endAt =
+                endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
+
+              const catNorm = normalizeCategory(category);
+
+              if (composeKind === "schedule") {
+                if (scheduleWithExpense && exPaymentType === "ETC" && !exPaymentLabel.trim()) {
+                  window.alert("기타 결제수단 이름을 입력해줘.");
+                  return;
+                }
+
+                const scheduleTitle = `${emojiForCategory(catNorm)} ${title}`.trim();
+                const transitMemo =
+                  catNorm === "교통2"
+                    ? (() => {
+                        const from = exTransitFromText.trim();
+                        const to = exTransitToText.trim();
+                        if (!from && !to) return "";
+                        return `${exTransitMode} ${from || "?"} → ${to || "?"}`.trim();
+                      })()
+                    : "";
+                const stripTransit2Line = (raw: string) =>
+                  raw
+                    .split("\n")
+                    .map((s) => s.trim())
+                    .filter(
+                      (s) =>
+                        !(
+                          s.includes("→") &&
+                          (s.startsWith("🚆") || s.startsWith("🚍") || s.startsWith("🚖") || s.startsWith("✈"))
+                        )
+                    )
+                    .join("\n")
+                    .trim();
+                const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
+                const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
+                const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote);
+
+                await createSchedule.mutateAsync({
+                  startAt,
+                  endAt,
+                  title: scheduleTitle,
+                  note: scheduleNote
+                });
+
+                if (scheduleWithExpense) {
+                  const amount = parseAmountInput(exAmount);
+                  if (amount == null) {
+                    window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
+                    return;
+                  }
+                  const payMinRaw = schedulePayTimeText.trim()
+                    ? parseFlexibleTimeToMinutes(schedulePayTimeText)
+                    : startMin;
+                  if (payMinRaw == null) {
+                    window.alert("결제 시각을 확인해줘.");
+                    return;
+                  }
+                  const occurredAt = dateFromSlotMinutes(composeDayLocal00, payMinRaw).toISOString();
+
+                  const transitPayload = buildTransitPayload(entryCategory, {
+                    legs: transitLegs,
+                    transit2: {
+                      mode: exTransitMode,
+                      start: entryStartText.trim(),
+                      end: entryEndText.trim(),
+                      fromText: exTransitFromText,
+                      toText: exTransitToText
+                    }
+                  });
+
+                  const payerName =
+                    payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
+
+                  const participants =
+                    expenseScope === "SHARED"
+                      ? Array.from(
+                          new Set(
+                            sharedNamesText
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean)
+                          )
+                        )
+                      : null;
+                  const participantsAll =
+                    expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+
+                  const merchantTrim = exMerchant.trim();
+                  const merchantFinal = merchantTrim || title;
+
+                  await createExpense.mutateAsync({
+                    occurredAt,
+                    endAt,
+                    amount,
+                    category,
+                    merchant: merchantFinal,
+                    detail: exDetail.trim() ? exDetail.trim() : null,
+                    memo: null,
+                    paymentType: exPaymentType,
+                    paymentOwner: payerName,
+                    paymentMethodLabel:
+                      exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
+                    ...installmentPayload(
+                      exPaymentType,
+                      exInstallment,
+                      exInstallmentMonths,
+                      exInstallmentNoInterest
+                    ),
+                    scope: expenseScope,
+                    participants: participantsAll,
+                    ...transitPayload
+                  });
+                }
+
+                if (convertFromExpenseId) {
+                  await deleteExpense.mutateAsync(convertFromExpenseId);
+                  setComposeConvertFromExpenseId(null);
+                }
+                handleComposeClose();
+                return;
+              }
+
               if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
                 window.alert("기타 결제수단 이름을 입력해줘.");
                 return;
               }
 
-              // 공통: 시간 파싱
-              const startMin = parseFlexibleTimeToMinutes(entryStartText);
-              const endMin = parseFlexibleTimeToMinutes(entryEndText);
-              if (startMin == null || endMin == null) return;
-              if (!(startMin < endMin)) return;
+              const merchantTrim = exMerchant.trim();
+              if (!transit && !merchantTrim) {
+                window.alert("결제처를 입력해줘.");
+                return;
+              }
 
-              // Always save as "expense". If amount is empty -> store 0 (UI hides it).
               const amount = parseAmountInput(exAmount);
               if (amount == null) {
                 window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
                 return;
               }
-              const occurredAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
-              const endAt = dateFromSlotMinutes(composeDayLocal00, endMin).toISOString();
 
               const transitPayload = buildTransitPayload(entryCategory, {
                 legs: transitLegs,
@@ -1729,27 +2416,36 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
               const participantsAll =
                 expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
 
+              const detailCombined = [title, exDetail.trim()].filter(Boolean).join(" · ") || null;
+
               await createExpense.mutateAsync({
-                occurredAt,
+                occurredAt: startAt,
                 endAt,
                 amount,
                 category,
-                merchant: title,
-                detail: exDetail.trim() ? exDetail.trim() : null,
+                merchant: merchantTrim ? merchantTrim : null,
+                detail: detailCombined,
                 memo: entryNote.trim() ? entryNote.trim() : null,
                 paymentType: exPaymentType,
                 paymentOwner: payerName,
                 paymentMethodLabel:
                   exPaymentType === "CASH" ? null : exPaymentLabel.trim() ? exPaymentLabel.trim() : null,
-                installment: false,
-                installmentMonths: null,
+                ...installmentPayload(
+                  exPaymentType,
+                  exInstallment,
+                  exInstallmentMonths,
+                  exInstallmentNoInterest
+                ),
                 scope: expenseScope,
                 participants: participantsAll,
                 ...transitPayload
               });
 
-              setComposeOpen(false);
-              resetComposeForm();
+              if (convertFromScheduleId) {
+                await deleteSchedule.mutateAsync(convertFromScheduleId);
+                setComposeConvertFromScheduleId(null);
+              }
+              handleComposeClose();
             }}
           >
             저장
@@ -1758,9 +2454,57 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
       >
         <div className="rounded-2xl border border-slate-200 bg-white p-3">
           <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors",
+                      composeKind === "expense"
+                        ? "bg-white text-indigo-700 shadow-sm"
+                        : "text-slate-500",
+                    )}
+                    onClick={() => {
+                      // 수정 중 일정 → 지출 전환: 지출로 저장 후 원본 일정 삭제
+                      if (composeEditScheduleId) {
+                        setComposeConvertFromScheduleId(composeEditScheduleId);
+                        setComposeEditScheduleId(null);
+                      } else if (composeConvertFromScheduleId) {
+                        // 되돌리기
+                        setComposeEditScheduleId(composeConvertFromScheduleId);
+                        setComposeConvertFromScheduleId(null);
+                      }
+                      setComposeKind("expense");
+                    }}
+                  >
+                    지출
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors",
+                      composeKind === "schedule"
+                        ? "bg-white text-indigo-700 shadow-sm"
+                        : "text-slate-500",
+                    )}
+                    onClick={() => {
+                      // 수정 중 지출 → 일정 전환: 일정으로 저장 후 원본 지출 삭제
+                      if (composeEditExpenseId) {
+                        setComposeConvertFromExpenseId(composeEditExpenseId);
+                        setComposeEditExpenseId(null);
+                      } else if (composeConvertFromExpenseId) {
+                        // 되돌리기
+                        setComposeEditExpenseId(composeConvertFromExpenseId);
+                        setComposeConvertFromExpenseId(null);
+                      }
+                      setComposeKind("schedule");
+                    }}
+                  >
+                    일정
+                  </button>
+                </div>
                 <label className="col-span-2">
                   <div className="mb-1 text-xs text-slate-400">날짜</div>
-                  <input
+                  <DateMonthInput
                     type="date"
                     value={composeDayKey}
                     onChange={(e) => {
@@ -1768,7 +2512,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                       if (!v) return;
                       setComposeDayKey(v);
                     }}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                    className="text-sm"
                   />
                 </label>
                 <label>
@@ -1786,32 +2530,43 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 </label>
                 <label>
                   <div className="mb-1 text-xs text-slate-400">
-                    {isTransitCategory ? "도착시간" : "끝"}
+                    {isTransitCategory ? "도착시간" : "끝 (선택)"}
                   </div>
                   <input
                     value={entryEndText}
                     onChange={(e) => setEntryEndText(e.target.value)}
-                    placeholder="예: 09:30 (05:00~28:30)"
+                    placeholder={
+                      isTransitCategory ? "예: 09:30 (05:00~28:30)" : "비워두면 끝 시간 없음 · 예: 09:30"
+                    }
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                   />
                 </label>
                 <label className="col-span-2">
                   <div className="mb-1 text-xs text-slate-400">카테고리</div>
-                  <select
-                    value={entryCategory}
-                    onChange={(e) => setEntryCategory(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  >
-                    {CATEGORY_GROUPS.map((g) => (
-                      <optgroup key={g.label} label={g.label}>
-                        {g.items.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-3">
+                    <CategoryCardPreview category={entryCategory} />
+                    <select
+                      value={entryCategory}
+                      onChange={(e) => setEntryCategory(e.target.value)}
+                      className={CATEGORY_SELECT_CLASS}
+                      style={CATEGORY_SELECT_ARROW_STYLE}
+                    >
+                      {CATEGORY_GROUPS.map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.items.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                      {entryCategory.trim() && !ALL_CATEGORIES.includes(entryCategory.trim()) ? (
+                        <option value={entryCategory.trim()}>
+                          {entryCategory.trim()} (기존)
+                        </option>
+                      ) : null}
+                    </select>
+                  </div>
                 </label>
 
                 {isTransit1 ? (
@@ -1857,133 +2612,332 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                   />
                 </label>
 
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">금액(없으면 비워도 됨)</div>
-                  <input
-                    inputMode="numeric"
-                    value={exAmount}
-                    onChange={(e) => setExAmount(e.target.value)}
-                    placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <div className="col-span-2 grid grid-cols-2 gap-2">
-                  <label className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-500">결제자</div>
-                    <div className="flex gap-2">
-                      {(["나", "기타"] as const).map((p) => (
-                        <button
-                          key={p}
-                          className={cn(
-                            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                            payerPreset === p
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-white text-slate-800"
-                          )}
-                          onClick={() => setPayerPreset(p)}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                    {payerPreset === "기타" ? (
+                {composeKind === "schedule" ? (
+                  <>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">함께한 사람(선택)</div>
                       <input
-                        value={payerOther}
-                        onChange={(e) => setPayerOther(e.target.value)}
-                        placeholder="결제자 이름"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        value={schedulePeopleText}
+                        onChange={(e) => setSchedulePeopleText(e.target.value)}
+                        placeholder="쉼표로 구분 예: 나,철수"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                       />
-                    ) : null}
-                  </label>
-
-                  <label className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-500">지출 유형</div>
-                    <div className="flex gap-2">
-                      {[
-                        { key: "PERSONAL" as const, label: "개인" },
-                        { key: "SHARED" as const, label: "공동" }
-                      ].map((t) => (
-                        <button
-                          key={t.key}
-                          className={cn(
-                            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                            expenseScope === t.key
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-white text-slate-800"
-                          )}
-                          onClick={() => setExpenseScope(t.key)}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
+                    </label>
+                    <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={scheduleWithExpense}
+                          onChange={(e) => setScheduleWithExpense(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                        />
+                        <span className="text-sm font-semibold text-slate-800">비용도 함께 기록</span>
+                      </label>
+                      {scheduleWithExpense ? (
+                        <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+                          <label className="block">
+                            <div className="mb-1 text-xs text-slate-400">결제 시각(선택)</div>
+                            <input
+                              value={schedulePayTimeText}
+                              onChange={(e) => setSchedulePayTimeText(e.target.value)}
+                              placeholder="비우면 일정 시작과 동일"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="mb-1 text-xs text-slate-400">금액(없으면 비워도 됨)</div>
+                            <input
+                              inputMode="numeric"
+                              value={exAmount}
+                              onChange={(e) => setExAmount(e.target.value)}
+                              placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
+                            />
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="min-w-0 space-y-2">
+                              <div className="mb-1 text-xs text-slate-400">결제자</div>
+                              <div className="flex gap-2">
+                                {(["나", "기타"] as const).map((p) => (
+                                  <button
+                                    key={p}
+                                    type="button"
+                                    className={cn(
+                                      "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                      payerPreset === p
+                                        ? "border-indigo-600 bg-indigo-600 text-white"
+                                        : "border-slate-200 bg-white text-slate-800"
+                                    )}
+                                    onClick={() => setPayerPreset(p)}
+                                  >
+                                    {p}
+                                  </button>
+                                ))}
+                              </div>
+                              {payerPreset === "기타" ? (
+                                <input
+                                  value={payerOther}
+                                  onChange={(e) => setPayerOther(e.target.value)}
+                                  placeholder="결제자 이름"
+                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                                />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0 space-y-2">
+                              <div className="mb-1 text-xs text-slate-400">지출 유형</div>
+                              <div className="flex gap-2">
+                                {[
+                                  { key: "PERSONAL" as const, label: "개인" },
+                                  { key: "SHARED" as const, label: "공동" }
+                                ].map((t) => (
+                                  <button
+                                    key={t.key}
+                                    type="button"
+                                    className={cn(
+                                      "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                      expenseScope === t.key
+                                        ? "border-indigo-600 bg-indigo-600 text-white"
+                                        : "border-slate-200 bg-white text-slate-800"
+                                    )}
+                                    onClick={() => setExpenseScope(t.key)}
+                                  >
+                                    {t.label}
+                                  </button>
+                                ))}
+                              </div>
+                              {expenseScope === "SHARED" ? (
+                                <input
+                                  value={sharedNamesText}
+                                  onChange={(e) => setSharedNamesText(e.target.value)}
+                                  placeholder="함께한 사람 (쉼표로 구분)"
+                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                                />
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="mb-1 text-xs text-slate-400">결제수단</div>
+                            <div className="flex flex-wrap gap-2">
+                              {PAYMENT_TYPE_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.key}
+                                  type="button"
+                                  className={cn(
+                                    "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                    exPaymentType === opt.key
+                                      ? "border-indigo-600 bg-indigo-600 text-white"
+                                      : "border-slate-200 bg-white text-slate-800"
+                                  )}
+                                  onClick={() => {
+                                    setExPaymentType(opt.key);
+                                    if (opt.key === "CASH") setExPaymentLabel("");
+                                    if (opt.key !== "CARD") {
+                                      setExInstallment(false);
+                                      setExInstallmentNoInterest(false);
+                                    }
+                                  }}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                            {exPaymentType !== "CASH" ? (
+                              <input
+                                value={exPaymentLabel}
+                                onChange={(e) => setExPaymentLabel(e.target.value)}
+                                placeholder={
+                                  exPaymentType === "CARD"
+                                    ? "카드 이름(선택)"
+                                    : exPaymentType === "ACCOUNT"
+                                      ? "이체 메모(선택)"
+                                      : "기타 결제수단 이름(필수)"
+                                }
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                              />
+                            ) : null}
+                            {exPaymentType === "CARD" ? (
+                              <CardInstallmentFields
+                                installment={exInstallment}
+                                setInstallment={setExInstallment}
+                                months={exInstallmentMonths}
+                                setMonths={setExInstallmentMonths}
+                                noInterest={exInstallmentNoInterest}
+                                setNoInterest={setExInstallmentNoInterest}
+                              />
+                            ) : null}
+                          </div>
+                          <label className="block">
+                            <div className="mb-1 text-xs text-slate-400">결제처(선택)</div>
+                            <input
+                              value={exMerchant}
+                              onChange={(e) => setExMerchant(e.target.value)}
+                              placeholder="예: CGV / 편의점"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="mb-1 text-xs text-slate-400">세부내용(선택)</div>
+                            <input
+                              value={exDetail}
+                              onChange={(e) => setExDetail(e.target.value)}
+                              placeholder="예: 팝콘, 콜라"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                            />
+                          </label>
+                        </div>
+                      ) : null}
                     </div>
-                    {expenseScope === "SHARED" ? (
+                  </>
+                ) : null}
+
+                {composeKind === "expense" ? (
+                  <>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">금액(없으면 비워도 됨)</div>
                       <input
-                        value={sharedNamesText}
-                        onChange={(e) => setSharedNamesText(e.target.value)}
-                        placeholder="함께한 사람 (쉼표로 구분) 예: 나,철수,영희"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        inputMode="numeric"
+                        value={exAmount}
+                        onChange={(e) => setExAmount(e.target.value)}
+                        placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
                       />
-                    ) : null}
-                  </label>
-                </div>
+                    </label>
 
-                <label className="col-span-2 rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-semibold text-slate-500">결제수단</div>
-                  <div className="flex gap-2">
-                    {PAYMENT_TYPE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.key}
-                        className={cn(
-                          "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                          exPaymentType === opt.key
-                            ? "border-indigo-600 bg-indigo-600 text-white"
-                            : "border-slate-200 bg-white text-slate-800"
-                        )}
-                        onClick={() => {
-                          setExPaymentType(opt.key);
-                          if (opt.key === "CASH") setExPaymentLabel("");
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  {exPaymentType !== "CASH" ? (
-                    <input
-                      value={exPaymentLabel}
-                      onChange={(e) => setExPaymentLabel(e.target.value)}
-                      placeholder={
-                        exPaymentType === "CARD"
-                          ? "카드 이름(선택)"
-                          : exPaymentType === "ACCOUNT"
-                            ? "이체 메모(선택) 예: 토스/계좌"
-                            : "기타 결제수단 이름(필수)"
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    />
-                  ) : null}
-                </label>
+                    <div className="col-span-2 grid grid-cols-2 gap-2">
+                      <div className="min-w-0 space-y-2">
+                        <div className="mb-1 text-xs text-slate-400">결제자</div>
+                        <div className="flex gap-2">
+                          {(["나", "기타"] as const).map((p) => (
+                            <button
+                              key={p}
+                              type="button"
+                              className={cn(
+                                "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                payerPreset === p
+                                  ? "border-indigo-600 bg-indigo-600 text-white"
+                                  : "border-slate-200 bg-white text-slate-800"
+                              )}
+                              onClick={() => setPayerPreset(p)}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </div>
+                        {payerPreset === "기타" ? (
+                          <input
+                            value={payerOther}
+                            onChange={(e) => setPayerOther(e.target.value)}
+                            placeholder="결제자 이름"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                          />
+                        ) : null}
+                      </div>
 
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">결제처(선택)</div>
-                  <input
-                    value={exMerchant}
-                    onChange={(e) => setExMerchant(e.target.value)}
-                    placeholder="예: CGV / 편의점 / 택시"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">세부내용(선택)</div>
-                  <input
-                    value={exDetail}
-                    onChange={(e) => setExDetail(e.target.value)}
-                    placeholder="예: 팝콘, 콜라 / 영등포→서울역"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
+                      <div className="min-w-0 space-y-2">
+                        <div className="mb-1 text-xs text-slate-400">지출 유형</div>
+                        <div className="flex gap-2">
+                          {[
+                            { key: "PERSONAL" as const, label: "개인" },
+                            { key: "SHARED" as const, label: "공동" }
+                          ].map((t) => (
+                            <button
+                              key={t.key}
+                              type="button"
+                              className={cn(
+                                "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                                expenseScope === t.key
+                                  ? "border-indigo-600 bg-indigo-600 text-white"
+                                  : "border-slate-200 bg-white text-slate-800"
+                              )}
+                              onClick={() => setExpenseScope(t.key)}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                        {expenseScope === "SHARED" ? (
+                          <input
+                            value={sharedNamesText}
+                            onChange={(e) => setSharedNamesText(e.target.value)}
+                            placeholder="함께한 사람 (쉼표로 구분) 예: 나,철수,영희"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="col-span-2 space-y-2">
+                      <div className="mb-1 text-xs text-slate-400">결제수단</div>
+                      <div className="flex flex-wrap gap-2">
+                        {PAYMENT_TYPE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            className={cn(
+                              "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
+                              exPaymentType === opt.key
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-slate-200 bg-white text-slate-800"
+                            )}
+                            onClick={() => {
+                              setExPaymentType(opt.key);
+                              if (opt.key === "CASH") setExPaymentLabel("");
+                              if (opt.key !== "CARD") {
+                                setExInstallment(false);
+                                setExInstallmentNoInterest(false);
+                              }
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      {exPaymentType !== "CASH" ? (
+                        <input
+                          value={exPaymentLabel}
+                          onChange={(e) => setExPaymentLabel(e.target.value)}
+                          placeholder={
+                            exPaymentType === "CARD"
+                              ? "카드 이름(선택)"
+                              : exPaymentType === "ACCOUNT"
+                                ? "이체 메모(선택) 예: 토스/계좌"
+                                : "기타 결제수단 이름(필수)"
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        />
+                      ) : null}
+                      {exPaymentType === "CARD" ? (
+                        <CardInstallmentFields
+                          installment={exInstallment}
+                          setInstallment={setExInstallment}
+                          months={exInstallmentMonths}
+                          setMonths={setExInstallmentMonths}
+                          noInterest={exInstallmentNoInterest}
+                          setNoInterest={setExInstallmentNoInterest}
+                        />
+                      ) : null}
+                    </div>
+
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">결제처(교통1 제외 시 필수)</div>
+                      <input
+                        value={exMerchant}
+                        onChange={(e) => setExMerchant(e.target.value)}
+                        placeholder="예: CGV / 편의점 / 택시"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="col-span-2">
+                      <div className="mb-1 text-xs text-slate-400">세부내용(선택)</div>
+                      <input
+                        value={exDetail}
+                        onChange={(e) => setExDetail(e.target.value)}
+                        placeholder="예: 팝콘, 콜라 / 영등포→서울역"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  </>
+                ) : null}
               </div>
         </div>
       </ComposeSheet>
@@ -2022,253 +2976,43 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
 
       {/* Expense detail sheet */}
       {expenseDetailOpen ? (
-        <div className="fixed inset-0 z-50">
-          <button
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setExpenseDetailOpen(null)}
-            aria-label="닫기"
-          />
-          <div className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-screen-sm max-h-[90dvh] flex-col rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  <span className="mr-2 text-base">{emojiForCategory(expenseDetailOpen.category)}</span>
-                  {expenseDetailOpen.merchant ?? normalizeCategory(expenseDetailOpen.category)}
-                </div>
-                <div className="mt-1 text-xs text-slate-400">
-                  {(expenseDetailOpen.endAt
-                    ? timeRangeLabel(expenseDetailOpen.occurredAt, expenseDetailOpen.endAt)
-                    : expenseTimeLabel(expenseDetailOpen.occurredAt, dayLocal00)) + " · "}
-                  {PAYMENT_TYPE_LABEL[expenseDetailOpen.paymentType]}
-                  {expenseDetailOpen.installment && expenseDetailOpen.installmentMonths
-                    ? ` · 할부 ${expenseDetailOpen.installmentMonths}개월`
-                    : ""}
-                </div>
-              </div>
+        <ComposeSheet
+          open
+          title={
+            <>
+              <span className="mr-2 text-base">{emojiForCategory(expenseDetailOpen.category)}</span>
+              {expenseDetailOpen.merchant ?? normalizeCategory(expenseDetailOpen.category)}
+            </>
+          }
+          subtitle={
+            (expenseDetailOpen.endAt
+              ? timeRangeLabel(expenseDetailOpen.occurredAt, expenseDetailOpen.endAt)
+              : expenseTimeLabel(expenseDetailOpen.occurredAt, dayLocal00)) +
+            " · " +
+            PAYMENT_TYPE_LABEL[expenseDetailOpen.paymentType] +
+            (expenseDetailOpen.installment && expenseDetailOpen.installmentMonths
+              ? ` · 할부 ${expenseDetailOpen.installmentMonths}개월${
+                  expenseDetailOpen.installmentNoInterest ? " · 무이자" : ""
+                }`
+              : "")
+          }
+          onClose={() => setExpenseDetailOpen(null)}
+          footer={
+            <div className="flex gap-3">
               <button
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
-                onClick={() => setExpenseDetailOpen(null)}
-              >
-                닫기
-              </button>
-            </div>
-
-            <div className="mt-3 flex-1 overflow-y-auto overscroll-contain pb-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              {expenseDetailOpen.amount > 0 ? (
-                <div className="flex items-baseline justify-between">
-                  <div className="text-xs text-slate-400">금액</div>
-                  <div className="text-base font-semibold tabular-nums text-slate-900">
-                    {formatWon(expenseDetailOpen.amount)}
-                  </div>
-                </div>
-              ) : null}
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="text-xs text-slate-500">결제수단</div>
-                  <div className="mt-1 font-semibold text-slate-900">
-                    {PAYMENT_TYPE_LABEL[expenseDetailOpen.paymentType]}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500">결제자</div>
-                  <div className="mt-1 font-semibold text-slate-900">
-                    {expenseDetailOpen.paymentOwner ?? "-"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500">카드/수단명</div>
-                  <div className="mt-1 font-semibold text-slate-900">
-                    {expenseDetailOpen.paymentMethodLabel ?? "-"}
-                  </div>
-                </div>
-                <div className="col-span-2">
-                  <div className="text-xs text-slate-500">결제처</div>
-                  <div className="mt-1 font-semibold text-slate-900">
-                    {expenseDetailOpen.merchant ?? "-"}
-                  </div>
-                </div>
-              </div>
-              {expenseDetailOpen.transitFrom || expenseDetailOpen.transitTo ? (
-                <div className="mt-3">
-                  <div className="text-xs text-slate-500">이동</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">
-                    {(expenseDetailOpen.transitMode ?? "") + " "}
-                    {(expenseDetailOpen.transitFrom ?? "?") +
-                      (expenseDetailOpen.transitVia
-                        ? ` → ${expenseDetailOpen.transitVia.split("|").join(" → ")}`
-                        : "") +
-                      " → " +
-                      (expenseDetailOpen.transitTo ?? "?")}
-                    {expenseDetailOpen.transitLine ? ` · ${expenseDetailOpen.transitLine}` : ""}
-                    {expenseDetailOpen.transitBusNumber
-                      ? ` · ${expenseDetailOpen.transitBusNumber}`
-                      : ""}
-                  </div>
-                </div>
-              ) : null}
-              {expenseDetailOpen.detail ? (
-                <div className="mt-3">
-                  <div className="text-xs text-slate-500">세부내용</div>
-                  <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.detail}</div>
-                </div>
-              ) : null}
-              {expenseDetailOpen.memo ? (
-                <div className="mt-3">
-                  <div className="text-xs text-slate-500">메모</div>
-                  <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.memo}</div>
-                </div>
-              ) : null}
-              {expenseDetailOpen.participants ? (
-                <div className="mt-3">
-                  <div className="text-xs text-slate-500">함께한 사람</div>
-                  <div className="mt-1 text-sm text-slate-800">
-                    {Array.isArray(expenseDetailOpen.participants)
-                      ? (expenseDetailOpen.participants as unknown[]).join(", ")
-                      : JSON.stringify(expenseDetailOpen.participants)}
-                  </div>
-                </div>
-              ) : null}
-
-              {settlementTransfersForMe(expenseDetailOpen, "나").length ? (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-slate-900">정산</div>
-                    <div className="text-xs font-semibold text-slate-500">건별 완료</div>
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    {settlementTransfersForMe(expenseDetailOpen, "나").map((t, idx) => {
-                      const key = transferKey(t);
-                      const done = isTransferSettled(expenseDetailOpen.id, key);
-                      return (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-                      >
-                        <div className="text-sm font-semibold text-slate-700">
-                          <span className="mr-2 rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">
-                            {t.from}
-                          </span>
-                          <span className="mx-1 text-slate-400">→</span>
-                          <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-xs text-white">
-                            {t.to}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-sm font-semibold tabular-nums text-slate-900">
-                            {formatWon(t.amount)}
-                          </div>
-                          <button
-                            className={cn(
-                              "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold",
-                              done
-                                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                                : "border-slate-200 bg-white text-slate-600"
-                            )}
-                            onClick={() => toggleTransferSettled(expenseDetailOpen.id, key)}
-                          >
-                            <span
-                              className={cn(
-                                "inline-flex h-4 w-4 items-center justify-center rounded-full border",
-                                done ? "border-emerald-300 bg-emerald-100" : "border-slate-300 bg-white"
-                              )}
-                            >
-                              {done ? "✓" : ""}
-                            </span>
-                            완료
-                          </button>
-                        </div>
-                      </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-            </div>
-
-            <div className="mt-3 flex gap-2 border-t border-slate-200 pt-3">
-              <button
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
+                type="button"
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm"
                 onClick={() => {
-                  setExpenseEditOpen(expenseDetailOpen);
-                  const d = new Date(expenseDetailOpen.occurredAt);
-                  setEditTimeText(`${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
-                  const ed = expenseDetailOpen.endAt ? new Date(expenseDetailOpen.endAt) : d;
-                  setEditEndTimeText(`${pad2(ed.getHours())}:${pad2(ed.getMinutes())}`);
-                  setEditAmount(String(expenseDetailOpen.amount));
-                  setEditCategory(expenseDetailOpen.category);
-                  setEditMerchant(expenseDetailOpen.merchant ?? "");
-                  setEditDetail(expenseDetailOpen.detail ?? "");
-                  setEditPaymentType(expenseDetailOpen.paymentType);
-                  setEditPaymentLabel(expenseDetailOpen.paymentMethodLabel ?? "");
-                  const owner = expenseDetailOpen.paymentOwner ?? "나";
-                  setEditPayerPreset(owner === "나" ? "나" : "기타");
-                  setEditPayerOther(owner === "나" ? "" : owner);
-                  setEditExpenseScope(expenseDetailOpen.scope ?? "PERSONAL");
-                  setEditSharedNamesText(
-                    Array.isArray(expenseDetailOpen.participants)
-                      ? (expenseDetailOpen.participants as unknown[]).join(", ")
-                      : ""
-                  );
-                  if (normalizeCategory(expenseDetailOpen.category) === "교통1") {
-                    const seg = expenseDetailOpen.transitSegments;
-                    if (Array.isArray(seg) && seg.length) {
-                      setTransitLegs(() => {
-                        const mapped = seg
-                          .map((s) => {
-                            if (!s || typeof s !== "object") return null;
-                            const anyS: any = s;
-                            if (anyS.mode === "BUS") {
-                              return {
-                                mode: "BUS" as const,
-                                start: anyS.start ?? "09:00",
-                                end: anyS.end ?? "09:30",
-                                busNumber: anyS.busNumber ?? "",
-                                from: anyS.from ?? "",
-                                to: anyS.to ?? ""
-                              };
-                            }
-                            if (anyS.mode === "SUBWAY") {
-                              return {
-                                mode: "SUBWAY" as const,
-                                start: anyS.start ?? "09:00",
-                                end: anyS.end ?? "09:30",
-                                from: null,
-                                to: null,
-                                line: anyS.line ?? ""
-                              };
-                            }
-                            return null;
-                          })
-                          .filter(Boolean) as any[];
-                        return mapped.length
-                          ? (mapped as any)
-                          : [
-                              {
-                                mode: "SUBWAY",
-                                start: "09:00",
-                                end: "09:30",
-                                from: null,
-                                to: null,
-                                line: ""
-                              }
-                            ];
-                      });
-                    }
-                  }
-                  if (normalizeCategory(expenseDetailOpen.category) === "교통2") {
-                    setExTransitMode(expenseDetailOpen.transitMode ?? "🚆");
-                    setExTransitFromText(expenseDetailOpen.transitFrom ?? "");
-                    setExTransitToText(expenseDetailOpen.transitTo ?? "");
-                  }
+                  fillComposeFromExpense(expenseDetailOpen);
                   setExpenseDetailOpen(null);
+                  setComposeOpen(true);
                 }}
               >
                 수정
               </button>
               <button
-                className="flex-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 shadow-sm"
+                type="button"
+                className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm"
                 onClick={async () => {
                   const id = expenseDetailOpen.id;
                   requestConfirm("기록이 사라집니다. 삭제하시겠습니까?", async () => {
@@ -2280,691 +3024,232 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
                 삭제
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Expense edit full screen */}
-      {expenseEditOpen ? (
-        <div className="fixed inset-0 z-[55]">
-          <button
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setExpenseEditOpen(null)}
-            aria-label="닫기"
-          />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">기록 수정</div>
-                <div className="mt-1 text-xs text-slate-500">{expenseEditOpen.id}</div>
-              </div>
-              <button
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
-                onClick={() => setExpenseEditOpen(null)}
-              >
-                닫기
-              </button>
-            </div>
-
-            <div className="mt-3 max-h-[70dvh] overflow-auto">
-              <div className="grid grid-cols-2 gap-3">
-                <label>
-                  <div className="mb-1 text-xs text-slate-400">시작</div>
-                  <input
-                    value={editTimeText}
-                    onChange={(e) => setEditTimeText(e.target.value)}
-                    placeholder="예: 09:00 (05:00~28:30)"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label>
-                  <div className="mb-1 text-xs text-slate-400">끝</div>
-                  <input
-                    value={editEndTimeText}
-                    onChange={(e) => setEditEndTimeText(e.target.value)}
-                    placeholder="예: 09:30 (05:00~28:30)"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label>
-                  <div className="mb-1 text-xs text-slate-400">카테고리</div>
-                  <select
-                    value={normalizeCategory(editCategory)}
-                    onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  >
-                    {!ALL_CATEGORIES.includes(normalizeCategory(editCategory)) ? (
-                      <option value={normalizeCategory(editCategory)}>
-                        {normalizeCategory(editCategory)}
-                      </option>
-                    ) : null}
-                    {CATEGORY_GROUPS.map((g) => (
-                      <optgroup key={g.label} label={g.label}>
-                        {g.items.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </label>
-
-                {normalizeCategory(editCategory) === "교통1" ? (
-                  <Transit1Fields
-                    legs={transitLegs as any}
-                    setLegs={setTransitLegs as any}
-                    requestConfirm={requestConfirm}
-                    openStationSearch={(legIndex, field) => {
-                      setStationQuery("");
-                      setStationSearchOpen({ legIndex, field });
-                    }}
-                  />
-                ) : null}
-
-                {normalizeCategory(editCategory) === "교통2" ? (
-                  <Transit2Fields
-                    mode={exTransitMode}
-                    setMode={setExTransitMode}
-                    fromText={exTransitFromText}
-                    setFromText={setExTransitFromText}
-                    toText={exTransitToText}
-                    setToText={setExTransitToText}
-                  />
-                ) : null}
-
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">금액</div>
-                  <input
-                    inputMode="numeric"
-                    value={editAmount}
-                    onChange={(e) => setEditAmount(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <div className="col-span-2 grid grid-cols-2 gap-2">
-                  <label className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-500">결제자</div>
-                    <div className="flex gap-2">
-                      {(["나", "기타"] as const).map((p) => (
-                        <button
-                          key={p}
-                          className={cn(
-                            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                            editPayerPreset === p
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-white text-slate-800"
-                          )}
-                          onClick={() => setEditPayerPreset(p)}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                    {editPayerPreset === "기타" ? (
-                      <input
-                        value={editPayerOther}
-                        onChange={(e) => setEditPayerOther(e.target.value)}
-                        placeholder="결제자 이름"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      />
-                    ) : null}
-                  </label>
-
-                  <label className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-500">지출 유형</div>
-                    <div className="flex gap-2">
-                      {[
-                        { key: "PERSONAL" as const, label: "개인" },
-                        { key: "SHARED" as const, label: "공동" }
-                      ].map((t) => (
-                        <button
-                          key={t.key}
-                          className={cn(
-                            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                            editExpenseScope === t.key
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-white text-slate-800"
-                          )}
-                          onClick={() => setEditExpenseScope(t.key)}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                    {editExpenseScope === "SHARED" ? (
-                      <input
-                        value={editSharedNamesText}
-                        onChange={(e) => setEditSharedNamesText(e.target.value)}
-                        placeholder="함께한 사람 (쉼표로 구분) 예: 나,철수,영희"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      />
-                    ) : null}
-                  </label>
+          }
+        >
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            {expenseDetailOpen.amount > 0 ? (
+              <div className="flex items-baseline justify-between">
+                <div className="text-xs text-slate-400">금액</div>
+                <div className="text-base font-semibold tabular-nums text-slate-900">
+                  {formatWon(expenseDetailOpen.amount)}
                 </div>
+              </div>
+            ) : null}
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-xs text-slate-400">결제수단</div>
+                <div className="mt-1 font-semibold text-slate-900">{PAYMENT_TYPE_LABEL[expenseDetailOpen.paymentType]}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">결제자</div>
+                <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.paymentOwner ?? "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">카드/수단명</div>
+                <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.paymentMethodLabel ?? "-"}</div>
+              </div>
+              <div className="col-span-2">
+                <div className="text-xs text-slate-400">결제처</div>
+                <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.merchant ?? "-"}</div>
+              </div>
+            </div>
+            {expenseDetailOpen.transitFrom || expenseDetailOpen.transitTo ? (
+              <div className="mt-3">
+                <div className="text-xs text-slate-400">이동</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">
+                  {(expenseDetailOpen.transitMode ?? "") + " "}
+                  {(expenseDetailOpen.transitFrom ?? "?") +
+                    (expenseDetailOpen.transitVia ? ` → ${expenseDetailOpen.transitVia.split("|").join(" → ")}` : "") +
+                    " → " +
+                    (expenseDetailOpen.transitTo ?? "?")}
+                  {expenseDetailOpen.transitLine ? ` · ${expenseDetailOpen.transitLine}` : ""}
+                  {expenseDetailOpen.transitBusNumber ? ` · ${expenseDetailOpen.transitBusNumber}` : ""}
+                </div>
+              </div>
+            ) : null}
+            {expenseDetailOpen.detail ? (
+              <div className="mt-3">
+                <div className="text-xs text-slate-400">세부내용</div>
+                <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.detail}</div>
+              </div>
+            ) : null}
+            {expenseDetailOpen.memo ? (
+              <div className="mt-3">
+                <div className="text-xs text-slate-400">메모</div>
+                <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.memo}</div>
+              </div>
+            ) : null}
+            {expenseDetailOpen.participants ? (
+              <div className="mt-3">
+                <div className="text-xs text-slate-400">함께한 사람</div>
+                <div className="mt-1 text-sm text-slate-800">
+                  {Array.isArray(expenseDetailOpen.participants)
+                    ? participantsDisplayWithoutMe(expenseDetailOpen.participants, "나")
+                    : JSON.stringify(expenseDetailOpen.participants)}
+                </div>
+              </div>
+            ) : null}
+          </div>
 
-                <label className="col-span-2 rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-semibold text-slate-500">결제수단</div>
-                  <div className="flex gap-2">
-                    {PAYMENT_TYPE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.key}
-                        className={cn(
-                          "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                          editPaymentType === opt.key
-                            ? "border-indigo-600 bg-indigo-600 text-white"
-                            : "border-slate-200 bg-white text-slate-800"
-                        )}
-                        onClick={() => {
-                          setEditPaymentType(opt.key);
-                          if (opt.key === "CASH") setEditPaymentLabel("");
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  {editPaymentType !== "CASH" ? (
-                    <input
-                      value={editPaymentLabel}
-                      onChange={(e) => setEditPaymentLabel(e.target.value)}
-                      placeholder={
-                        editPaymentType === "CARD"
-                          ? "카드 이름(선택)"
-                          : editPaymentType === "ACCOUNT"
-                            ? "이체 메모(선택) 예: 토스/계좌"
-                            : "기타 결제수단 이름(필수)"
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+          {expenseDetailOpen.scope === "SHARED" ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="text-sm font-semibold text-slate-900">정산</div>
+              <div className="mt-2 space-y-2">
+                {settlementTransfersForMe(expenseDetailOpen, "나").length ? (
+                  settlementTransfersForMe(expenseDetailOpen, "나").map((t) => {
+                  const counterparty = t.from === "나" ? t.to : t.from;
+                  const key = `${t.from}→${t.to}:${t.amount}`;
+                  const done = isNetSettledForDay(dayKey, counterparty);
+                  const signedAmount = t.from === "나" ? -t.amount : t.amount;
+                  return (
+                    <SettlementRow
+                      key={key}
+                      from={t.from}
+                      to={t.to}
+                      me="나"
+                      amount={signedAmount}
+                      settled={done}
+                      onToggle={() => requestToggleNetSettledForDay(dayKey, counterparty)}
                     />
-                  ) : null}
-                </label>
-
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">결제처(선택)</div>
-                  <input
-                    value={editMerchant}
-                    onChange={(e) => setEditMerchant(e.target.value)}
-                    placeholder="예: CGV / 편의점 / 택시"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">세부내용(선택)</div>
-                  <input
-                    value={editDetail}
-                    onChange={(e) => setEditDetail(e.target.value)}
-                    placeholder="예: 팝콘, 콜라 / 영등포→서울역"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
+                  );
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-semibold text-slate-500">
+                    정산할 내역이 없어요. (결제자/참여자 정보가 없거나, 내 이름이 참여자에 없을 수 있어요.)
+                  </div>
+                )}
               </div>
             </div>
-
-            <button
-              className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-              disabled={updateExpense.isPending}
-              onClick={async () => {
-                const parsed = parseAmountInput(editAmount);
-                  if (parsed == null) return;
-                const mm = parseFlexibleTimeToMinutes(editTimeText);
-                const em = parseFlexibleTimeToMinutes(editEndTimeText);
-                if (mm == null || em == null) return;
-                if (!(mm < em)) return;
-                if (editPaymentType === "ETC" && !editPaymentLabel.trim()) return;
-                const payerName =
-                  editPayerPreset === "나"
-                    ? "나"
-                    : editPayerOther.trim()
-                      ? editPayerOther.trim()
-                      : "기타";
-                const participants =
-                  editExpenseScope === "SHARED"
-                    ? Array.from(
-                        new Set(
-                          editSharedNamesText
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean)
-                        )
-                      )
-                    : null;
-                const participantsAll =
-                  editExpenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
-                const occurredAt = dateFromSlotMinutes(dayLocal00, mm).toISOString();
-                const endAt = dateFromSlotMinutes(dayLocal00, em).toISOString();
-                const cat = normalizeCategory(editCategory) || expenseEditOpen.category;
-                const transitPayload = buildTransitPayload(cat, {
-                  legs: transitLegs,
-                  transit2: {
-                    mode: exTransitMode,
-                    start: editTimeText.trim(),
-                    end: editTimeText.trim(),
-                    fromText: exTransitFromText,
-                    toText: exTransitToText
-                  }
-                });
-                await updateExpense.mutateAsync({
-                  id: expenseEditOpen.id,
-                  input: {
-                    occurredAt,
-                    endAt,
-                    amount: parsed,
-                    category: cat,
-                    paymentType: editPaymentType,
-                    paymentMethodLabel:
-                      editPaymentType === "CASH"
-                        ? null
-                        : editPaymentLabel.trim()
-                          ? editPaymentLabel.trim()
-                          : null,
-                    paymentOwner: payerName,
-                    scope: editExpenseScope,
-                    participants: participantsAll,
-                    merchant: editMerchant.trim() ? editMerchant.trim() : null,
-                    detail: editDetail.trim() ? editDetail.trim() : null,
-                    ...transitPayload
-                  }
-                });
-                setExpenseEditOpen(null);
-              }}
-            >
-              저장
-            </button>
-          </div>
-        </div>
+          ) : null}
+        </ComposeSheet>
       ) : null}
 
-      {/* Schedule detail sheet */}
+      {/* Schedule detail — 기록 작성 시트와 동일 패턴(max-w-md · 상단 핸들) */}
       {scheduleDetailOpen ? (
-        <div className="fixed inset-0 z-50">
-          <button
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setScheduleDetailOpen(null)}
-            aria-label="닫기"
-          />
-          <div className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-screen-sm max-h-[90dvh] flex-col rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">{scheduleDetailOpen.title}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {timeRangeLabel(scheduleDetailOpen.startAt, scheduleDetailOpen.endAt)}
-                </div>
-              </div>
+        <ComposeSheet
+          open
+          title={
+            parseEmojiPrefixedTitle(scheduleDetailOpen.title).content || scheduleDetailOpen.title
+          }
+          subtitle={timeRangeLabel(scheduleDetailOpen.startAt, scheduleDetailOpen.endAt)}
+          onClose={() => {
+            setScheduleDetailOpen(null);
+            setScheduleDetailTab("schedule");
+          }}
+          footer={
+            <div className="flex gap-3">
               <button
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
-                onClick={() => setScheduleDetailOpen(null)}
-              >
-                닫기
-              </button>
-            </div>
-
-            <div className="mt-3 flex-1 overflow-y-auto overscroll-contain pb-4">
-              {scheduleDetailOpen.note ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  {scheduleDetailOpen.note}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                  메모 없음
-                </div>
-              )}
-            </div>
-
-            <div className="mt-3 flex gap-2 border-t border-slate-200 pt-3">
-              <button
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
+                type="button"
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm"
                 onClick={() => {
-                  setScheduleEditOpen(scheduleDetailOpen);
-                  // 기본값 채우기 (시간은 HH:MM만)
-                  const s = new Date(scheduleDetailOpen.startAt);
-                  const e = new Date(scheduleDetailOpen.endAt);
-                  setEditSchedStart(`${pad2(s.getHours())}:${pad2(s.getMinutes())}`);
-                  setEditSchedEnd(`${pad2(e.getHours())}:${pad2(e.getMinutes())}`);
-                  const parsed = parseEmojiPrefixedTitle(scheduleDetailOpen.title);
-                  setEditSchedCategory(parsed.category);
-                  setEditSchedTitle(parsed.content);
-                  setEditSchedNote(scheduleDetailOpen.note ?? "");
-                  setEditSchedAmount("");
-                  setEditSchedPaymentType("CARD");
-                  setEditSchedPaymentLabel("");
-                  setEditSchedPayerPreset("나");
-                  setEditSchedPayerOther("");
-                  setEditSchedExpenseScope("PERSONAL");
-                  setEditSchedSharedNamesText("");
+                  const full = scheduleDetailOpen;
+                  const linked = expensesOccurringWithinSchedule(todayExpenses, full);
+                  fillComposeFromSchedule(full, linked);
                   setScheduleDetailOpen(null);
+                  setScheduleDetailTab("schedule");
+                  setComposeOpen(true);
                 }}
               >
                 수정
               </button>
               <button
-                className="flex-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 shadow-sm"
+                type="button"
+                className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm"
                 onClick={async () => {
                   const id = scheduleDetailOpen.id;
                   requestConfirm("기록이 사라집니다. 삭제하시겠습니까?", async () => {
                     await deleteSchedule.mutateAsync(id);
                     setScheduleDetailOpen(null);
+                    setScheduleDetailTab("schedule");
                   });
                 }}
               >
                 삭제
               </button>
             </div>
+          }
+        >
+          <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              className={cn(
+                "flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors",
+                scheduleDetailTab === "schedule"
+                  ? "bg-white text-indigo-700 shadow-sm"
+                  : "text-slate-500"
+              )}
+              onClick={() => setScheduleDetailTab("schedule")}
+            >
+              일정
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors",
+                scheduleDetailTab === "expense"
+                  ? "bg-white text-indigo-700 shadow-sm"
+                  : "text-slate-500"
+              )}
+              onClick={() => setScheduleDetailTab("expense")}
+            >
+              지출
+            </button>
           </div>
-        </div>
+
+          <div className="mt-3">
+            {scheduleDetailTab === "schedule" ? (
+              <ScheduleDetailNoteBlock scheduleId={scheduleDetailOpen.id} note={scheduleDetailOpen.note} />
+            ) : (
+              <div className="space-y-2">
+                {scheduleDetailLinkedExpenses.map((e) => {
+                  const et = tintForCategory(e.category || "기타");
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm hover:brightness-[0.99]"
+                      onClick={() => {
+                        setScheduleDetailOpen(null);
+                        setScheduleDetailTab("schedule");
+                        setExpenseDetailOpen(e);
+                      }}
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className={cn(
+                            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg",
+                            et.border,
+                            et.bg
+                          )}
+                        >
+                          {emojiForCategory(e.category || "기타")}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-slate-900">
+                            {e.merchant ?? normalizeCategory(e.category)}
+                          </div>
+                          <div className="mt-0.5 text-xs text-slate-400">
+                            {expenseTimeLabel(e.occurredAt, dayLocal00)} · {PAYMENT_TYPE_LABEL[e.paymentType]}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
+                        {formatWon(e.amount)}
+                      </div>
+                    </button>
+                  );
+                })}
+                {scheduleDetailLinkedExpenses.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">
+                    이 일정 시간 안에 결제 시각이 있는 지출이 없어요. 기록 작성에서 일정과 비용을 함께 넣으면 이 탭에 표시돼요.
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </ComposeSheet>
       ) : null}
 
-      {/* Schedule edit full screen */}
-      {scheduleEditOpen ? (
-        <div className="fixed inset-0 z-[55]">
-          <button
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setScheduleEditOpen(null)}
-            aria-label="닫기"
-          />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">기록 수정</div>
-                <div className="mt-1 text-xs text-slate-500">{scheduleEditOpen.id}</div>
-              </div>
-              <button
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
-                onClick={() => setScheduleEditOpen(null)}
-              >
-                닫기
-              </button>
-            </div>
-
-            <div className="mt-3 max-h-[70dvh] overflow-auto">
-              <div className="rounded-2xl border border-slate-200 bg-white p-3">
-              <div className="grid grid-cols-2 gap-3">
-                <label>
-                  <div className="mb-1 text-xs text-slate-400">
-                    {editSchedCategory === "교통1" || editSchedCategory === "교통2" ? "출발시간" : "시작"}
-                  </div>
-                  <input
-                    value={editSchedStart}
-                    onChange={(e) => setEditSchedStart(e.target.value)}
-                    placeholder="예: 09:00 (05:00~28:30)"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label>
-                  <div className="mb-1 text-xs text-slate-400">
-                    {editSchedCategory === "교통1" || editSchedCategory === "교통2" ? "도착시간" : "끝"}
-                  </div>
-                  <input
-                    value={editSchedEnd}
-                    onChange={(e) => setEditSchedEnd(e.target.value)}
-                    placeholder="예: 09:30 (05:00~28:30)"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">카테고리</div>
-                  <select
-                    value={editSchedCategory}
-                    onChange={(e) => setEditSchedCategory(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  >
-                    {CATEGORY_GROUPS.map((g) => (
-                      <optgroup key={g.label} label={g.label}>
-                        {g.items.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </label>
-
-                {editSchedCategory === "교통1" ? (
-                  <Transit1Fields
-                    legs={transitLegs as any}
-                    setLegs={setTransitLegs as any}
-                    requestConfirm={requestConfirm}
-                    openStationSearch={(legIndex, field) => {
-                      setStationQuery("");
-                      setStationSearchOpen({ legIndex, field });
-                    }}
-                  />
-                ) : null}
-
-                {editSchedCategory === "교통2" ? (
-                  <Transit2Fields
-                    mode={exTransitMode}
-                    setMode={setExTransitMode}
-                    fromText={exTransitFromText}
-                    setFromText={setExTransitFromText}
-                    toText={exTransitToText}
-                    setToText={setExTransitToText}
-                  />
-                ) : null}
-
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">내용</div>
-                  <input
-                    value={editSchedTitle}
-                    onChange={(e) => setEditSchedTitle(e.target.value)}
-                    placeholder="예: 교통 이동시간 / 영화 / 헬스 / 오늘 뭐했는지"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">메모(선택)</div>
-                  <input
-                    value={editSchedNote}
-                    onChange={(e) => setEditSchedNote(e.target.value)}
-                    placeholder="선택"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">금액(없으면 비워도 됨)</div>
-                  <input
-                    inputMode="numeric"
-                    value={editSchedAmount}
-                    onChange={(e) => setEditSchedAmount(e.target.value)}
-                    placeholder="예: 12000"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <div className="col-span-2 grid grid-cols-2 gap-2">
-                  <label className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-500">결제자</div>
-                    <div className="flex gap-2">
-                      {(["나", "기타"] as const).map((p) => (
-                        <button
-                          key={p}
-                          className={cn(
-                            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                            editSchedPayerPreset === p
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-white text-slate-800"
-                          )}
-                          onClick={() => setEditSchedPayerPreset(p)}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                    {editSchedPayerPreset === "기타" ? (
-                      <input
-                        value={editSchedPayerOther}
-                        onChange={(e) => setEditSchedPayerOther(e.target.value)}
-                        placeholder="결제자 이름"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      />
-                    ) : null}
-                  </label>
-
-                  <label className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-500">지출 유형</div>
-                    <div className="flex gap-2">
-                      {[
-                        { key: "PERSONAL" as const, label: "개인" },
-                        { key: "SHARED" as const, label: "공동" }
-                      ].map((t) => (
-                        <button
-                          key={t.key}
-                          className={cn(
-                            "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                            editSchedExpenseScope === t.key
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-white text-slate-800"
-                          )}
-                          onClick={() => setEditSchedExpenseScope(t.key)}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                    {editSchedExpenseScope === "SHARED" ? (
-                      <input
-                        value={editSchedSharedNamesText}
-                        onChange={(e) => setEditSchedSharedNamesText(e.target.value)}
-                        placeholder="함께한 사람 (쉼표로 구분) 예: 나,철수,영희"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      />
-                    ) : null}
-                  </label>
-                </div>
-
-                <label className="col-span-2 rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-semibold text-slate-500">결제수단</div>
-                  <div className="flex gap-2">
-                    {PAYMENT_TYPE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.key}
-                        className={cn(
-                          "flex-1 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm",
-                          editSchedPaymentType === opt.key
-                            ? "border-indigo-600 bg-indigo-600 text-white"
-                            : "border-slate-200 bg-white text-slate-800"
-                        )}
-                        onClick={() => {
-                          setEditSchedPaymentType(opt.key);
-                          if (opt.key === "CASH") setEditSchedPaymentLabel("");
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  {editSchedPaymentType !== "CASH" ? (
-                    <input
-                      value={editSchedPaymentLabel}
-                      onChange={(e) => setEditSchedPaymentLabel(e.target.value)}
-                      placeholder={
-                        editSchedPaymentType === "CARD"
-                          ? "카드 이름(선택)"
-                          : editSchedPaymentType === "ACCOUNT"
-                            ? "이체 메모(선택) 예: 토스/계좌"
-                            : "기타 결제수단 이름(필수)"
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    />
-                  ) : null}
-                </label>
-              </div>
-              </div>
-            </div>
-
-            <div className="mt-3 flex gap-2">
-              <button
-                className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm disabled:opacity-50"
-                disabled={deleteSchedule.isPending}
-                onClick={() => {
-                  const id = scheduleEditOpen.id;
-                  requestConfirm("기록이 사라집니다. 삭제하시겠습니까?", async () => {
-                    await deleteSchedule.mutateAsync(id);
-                    setScheduleEditOpen(null);
-                  });
-                }}
-              >
-                삭제
-              </button>
-              <button
-                className="flex-[2] rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={updateSchedule.isPending}
-                onClick={async () => {
-                  const sMin = parseFlexibleTimeToMinutes(editSchedStart);
-                  const eMin = parseFlexibleTimeToMinutes(editSchedEnd);
-                  if (sMin == null || eMin == null) return;
-                  if (!(sMin < eMin)) return;
-                  const title = editSchedTitle.trim();
-                  if (!title) return;
-                  const cat = editSchedCategory.trim() || "기타";
-                  const amount = parseAmountInput(editSchedAmount);
-                  if (amount == null) return;
-                  if (editSchedPaymentType === "ETC" && !editSchedPaymentLabel.trim()) return;
-
-                  // Convert schedule -> expense (amount may be 0)
-                  const occurredAt = dateFromSlotMinutes(dayLocal00, sMin).toISOString();
-                  const payerName =
-                    editSchedPayerPreset === "나"
-                      ? "나"
-                      : editSchedPayerOther.trim()
-                        ? editSchedPayerOther.trim()
-                        : "기타";
-                  const participants =
-                    editSchedExpenseScope === "SHARED"
-                      ? Array.from(
-                          new Set(
-                            editSchedSharedNamesText
-                              .split(",")
-                              .map((s) => s.trim())
-                              .filter(Boolean)
-                          )
-                        )
-                      : null;
-                  const participantsAll =
-                    editSchedExpenseScope === "SHARED"
-                      ? sharedParticipantsAll(payerName, participants)
-                      : null;
-
-                  await createExpense.mutateAsync({
-                    occurredAt,
-                    amount,
-                    category: cat,
-                    merchant: title,
-                    detail: null,
-                    memo: editSchedNote.trim() ? editSchedNote.trim() : null,
-                    paymentType: editSchedPaymentType,
-                    paymentOwner: payerName,
-                    paymentMethodLabel:
-                      editSchedPaymentType === "CASH"
-                        ? null
-                        : editSchedPaymentLabel.trim()
-                          ? editSchedPaymentLabel.trim()
-                          : null,
-                    installment: false,
-                    installmentMonths: null,
-                    scope: editSchedExpenseScope,
-                    participants: participantsAll,
-                    transitFrom: null,
-                    transitTo: null,
-                    transitVia: null,
-                    transitLine: null,
-                    transitMode: null,
-                    transitBusNumber: null,
-                    transitSegments: null
-                  });
-                  await deleteSchedule.mutateAsync(scheduleEditOpen.id);
-                  setScheduleEditOpen(null);
-                }}
-              >
-                저장
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* Confirm dialog */}
       {confirmOpen ? (
@@ -2974,7 +3259,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
             onClick={() => setConfirmOpen(null)}
             aria-label="닫기"
           />
-          <div className="absolute inset-x-0 top-1/2 mx-auto w-full max-w-screen-sm -translate-y-1/2 px-4">
+          <div className="absolute inset-x-0 top-1/2 mx-auto w-full max-w-md -translate-y-1/2 px-4">
             <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl">
               <div className="text-sm font-semibold text-slate-900">삭제 확인</div>
               <div className="mt-2 text-sm text-slate-700">{confirmOpen.message}</div>
@@ -3011,7 +3296,7 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
             onClick={() => setSettlementSheetOpen(false)}
             aria-label="닫기"
           />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
+          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">정산표</div>
@@ -3069,7 +3354,6 @@ export default function App({ view }: { view: "main" | "today" | "month" }) {
         </div>
       ) : null}
 
-      {/* Calendar popover rendered in header */}
     </div>
   );
 }

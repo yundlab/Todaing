@@ -1,37 +1,12 @@
+import type { RefObject } from "react";
 import { Link } from "react-router-dom";
 import TodaingLogoMark from "./TodaingLogoMark";
-
-function SettingsIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <path
-        d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M19.4 15a1.8 1.8 0 0 0 .36 2l.04.05a2.2 2.2 0 0 1-1.56 3.76 2.2 2.2 0 0 1-1.56-.65l-.05-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V21a2.2 2.2 0 0 1-4.4 0v-.06a1.8 1.8 0 0 0-1.1-1.65 1.8 1.8 0 0 0-2 .36l-.05.04a2.2 2.2 0 0 1-3.11 0 2.2 2.2 0 0 1 0-3.11l.04-.05a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H3a2.2 2.2 0 0 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.1 1.8 1.8 0 0 0-.36-2l-.04-.05a2.2 2.2 0 0 1 0-3.11 2.2 2.2 0 0 1 3.11 0l.05.04a1.8 1.8 0 0 0 2 .36 1.8 1.8 0 0 0 1.1-1.65V3a2.2 2.2 0 0 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l.05-.04a2.2 2.2 0 0 1 3.11 0 2.2 2.2 0 0 1 0 3.11l-.04.05a1.8 1.8 0 0 0-.36 2 1.8 1.8 0 0 0 1.65 1.1H21a2.2 2.2 0 0 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export default function Header(props: {
   dayKey: string;
   monthKey: string;
   monthMode: boolean;
-  calendarPopoverOpen: boolean;
-  // eslint-disable-next-line no-unused-vars
-  setCalendarPopoverOpen: (_next: boolean | ((_prev: boolean) => boolean)) => void;
-  calendarInputRef: React.RefObject<HTMLInputElement>;
+  calendarInputRef: RefObject<HTMLInputElement>;
   // eslint-disable-next-line no-unused-vars
   onPick: (_next: Date) => void;
   onPrev: () => void;
@@ -44,8 +19,6 @@ export default function Header(props: {
     dayKey,
     monthKey,
     monthMode,
-    calendarPopoverOpen,
-    setCalendarPopoverOpen,
     calendarInputRef,
     onPick,
     onPrev,
@@ -88,54 +61,40 @@ export default function Header(props: {
                 />
               </svg>
             </button>
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-semibold tabular-nums text-slate-900 shadow-sm active:scale-[0.99]"
-              onClick={() => setCalendarPopoverOpen((v) => !v)}
-              aria-label={monthMode ? "월 선택" : "날짜 선택"}
-              title={monthMode ? "월 선택" : "날짜 선택"}
-            >
-              {monthMode ? monthKey : dayKey}
-            </button>
-            {calendarPopoverOpen ? (
-              <div className="fixed inset-0 z-[80]">
-                <button
-                  type="button"
-                  className="absolute inset-0"
-                  onClick={() => setCalendarPopoverOpen(false)}
-                  aria-label="닫기"
-                />
-                <div className="absolute left-1/2 top-[72px] w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-slate-600">
-                      {monthMode ? "월 선택" : "날짜 선택"}
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100"
-                      onClick={() => setCalendarPopoverOpen(false)}
-                    >
-                      닫기
-                    </button>
-                  </div>
-                  <input
-                    ref={calendarInputRef}
-                    type={monthMode ? "month" : "date"}
-                    value={monthMode ? monthKey : dayKey}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (!v) return;
-                      const d = monthMode ? new Date(`${v}-01T00:00:00`) : new Date(`${v}T00:00:00`);
-                      if (Number.isNaN(d.getTime())) return;
-                      d.setHours(0, 0, 0, 0);
-                      onPick(d);
-                      setCalendarPopoverOpen(false);
-                    }}
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
-                  />
-                </div>
-              </div>
-            ) : null}
+            {/* 탭 한 번에 네이티브 date/month 피커 — 메인에서도 안정적으로 열기 */}
+            <div className="relative inline-flex">
+              <button
+                type="button"
+                className="inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-semibold tabular-nums text-slate-900 shadow-sm active:scale-[0.99]"
+                onClick={() => {
+                  const el = calendarInputRef.current;
+                  if (!el) return;
+                  // Safari/모바일에서 opacity=0 input 클릭이 막히는 케이스가 있어 showPicker 우선 사용
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const anyEl = el as any;
+                  if (typeof anyEl.showPicker === "function") anyEl.showPicker();
+                  else el.click();
+                }}
+                aria-label={monthMode ? "월 선택" : "날짜 선택"}
+              >
+                {monthMode ? monthKey : dayKey}
+              </button>
+              <input
+                ref={calendarInputRef}
+                type={monthMode ? "month" : "date"}
+                value={monthMode ? monthKey : dayKey}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  const d = monthMode ? new Date(`${v}-01T00:00:00`) : new Date(`${v}T00:00:00`);
+                  if (Number.isNaN(d.getTime())) return;
+                  d.setHours(0, 0, 0, 0);
+                  onPick(d);
+                }}
+                className="sr-only"
+                tabIndex={-1}
+              />
+            </div>
             <button
               type="button"
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 active:scale-[0.99]"
@@ -157,14 +116,6 @@ export default function Header(props: {
           </div>
 
           <div className="flex items-center justify-end gap-1">
-            <Link
-              to="/settings"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 hover:bg-slate-100 active:scale-[0.99]"
-              aria-label="설정"
-              title="설정"
-            >
-              <SettingsIcon className="h-5 w-5" />
-            </Link>
             {showDetailClose ? (
               <button
                 type="button"
