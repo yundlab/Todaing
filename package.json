@@ -9,6 +9,7 @@
     "dev": "corepack pnpm -r --parallel dev",
     "build": "corepack pnpm -r build",
     "lint": "corepack pnpm -r lint",
-    "typecheck": "corepack pnpm -r typecheck"
+    "typecheck": "corepack pnpm -r typecheck",
+    "build:stations": "node scripts/build-capital-metro-stations.mjs"
   }
 }
