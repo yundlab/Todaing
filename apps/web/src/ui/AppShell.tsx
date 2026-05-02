@@ -45,7 +45,7 @@ import {
   yyyyMmDdLocal,
   yyyyMmLocal
 } from "../domain/date";
-import { parseFlexibleTimeToMinutes } from "../domain/time";
+import { normalizeFourDigitTimeInput, parseFlexibleTimeToMinutes } from "../domain/time";
 import { parseScheduleNote } from "../domain/scheduleNote";
 import {
   effectiveMonthlyBudgetWon,
@@ -224,26 +224,24 @@ function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-function ScheduleDetailNoteBlock(props: { scheduleId: string; note: string | null }) {
+function ScheduleDetailNoteBlock(props: { title: string; note: string | null }) {
+  const parsedTitle = parseEmojiPrefixedTitle(props.title);
+  const titleText = parsedTitle.content || props.title;
   const n = parseScheduleNote(props.note);
-  if (!n.people.length && !n.memo) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-        메모 없음
-      </div>
-    );
-  }
   return (
-    <div className="space-y-4">
-      {n.people.length ? (
-        <div className="flex min-w-0 items-start gap-2 text-sm font-medium text-slate-700">
-          <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-          <span className="min-w-0 break-words">{n.people.join(", ")}</span>
-        </div>
-      ) : null}
-      {n.memo ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">{n.memo}</div>
-      ) : null}
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+      <div>
+        <div className="text-xs text-slate-400">제목</div>
+        <div className="mt-1 break-words font-semibold text-slate-900">{titleText}</div>
+      </div>
+      <div className="mt-3">
+        <div className="text-xs text-slate-400">내용</div>
+        <div className="mt-1 break-words text-slate-800">{n.memo?.trim() ? n.memo : "—"}</div>
+      </div>
+      <div className="mt-3">
+        <div className="text-xs text-slate-400">세부 내용</div>
+        <div className="mt-1 break-words text-slate-800">{n.detail?.trim() ? n.detail : "—"}</div>
+      </div>
     </div>
   );
 }
@@ -686,7 +684,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
   const [expenseDetailOpen, setExpenseDetailOpen] = useState<Expense | null>(null);
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState<ScheduleItem | null>(null);
-  const [scheduleDetailTab, setScheduleDetailTab] = useState<"schedule" | "expense">("schedule");
 
   const {
     entryStartText,
@@ -1148,11 +1145,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
       setExTransitToText("");
     }
   }
-
-  const scheduleDetailLinkedExpenses = useMemo(() => {
-    if (!scheduleDetailOpen) return [];
-    return expensesOccurringWithinSchedule(expensesData?.items ?? [], scheduleDetailOpen);
-  }, [scheduleDetailOpen, expensesData?.items]);
 
   const monthToDateTotal = useMemo(() => {
     const items = expensesData?.items ?? [];
@@ -1854,7 +1846,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                       onClick={() => {
                         const full = (scheduleData?.items ?? []).find((s) => s.id === it.id);
                         if (!full) return;
-                        setScheduleDetailTab("schedule");
                         setScheduleDetailOpen(full);
                       }}
                     >
@@ -2001,7 +1992,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   : null;
               const settlementLine = isCashflowVirtual ? null : settlementLineForExpense(e, "나");
               const isSettled = isCashflowVirtual ? true : isExpenseNetSettledForDay(dayKey, e, "나");
-              // 카드에는 세부내용(detail) 노출하지 않음. (메모만 노출)
+              // 카드에는 세부 내용(detail) 노출하지 않음. (메모만 노출)
               const rawMemoText = (e.memo ?? "").trim();
               const memoText =
                 normalizeCategory(e.category) === "교통2" && isUsageDayDifferent(e, dayKey)
@@ -2469,7 +2460,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                             maxLength={5}
                             value={plannedAtLocal.split("T")[1] ?? ""}
                             onChange={(e) => {
-                              const t = e.target.value;
+                              const t = normalizeFourDigitTimeInput(e.target.value);
                               const d = plannedAtLocal.split("T")[0] ?? "";
                               setPlannedAtLocal(`${d}T${t}`);
                             }}
@@ -2496,7 +2487,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   <input
                     value={entryStartText}
                     onChange={(e) => {
-                      setEntryStartText(e.target.value);
+                      setEntryStartText(normalizeFourDigitTimeInput(e.target.value));
                     }}
                     placeholder="예: 09:00 (05:00~28:30)"
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
@@ -2515,7 +2506,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   </div>
                   <input
                     value={entryEndText}
-                    onChange={(e) => setEntryEndText(e.target.value)}
+                    onChange={(e) => setEntryEndText(normalizeFourDigitTimeInput(e.target.value))}
                     placeholder={
                       isTransitCategory ? "예: 09:30 (05:00~28:30)" : "비워두면 끝 시간 없음 · 예: 09:30"
                     }
@@ -2685,7 +2676,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                             <div className="mb-1 text-xs text-slate-400">결제 시각</div>
                             <input
                               value={schedulePayTimeText}
-                              onChange={(e) => setSchedulePayTimeText(e.target.value)}
+                              onChange={(e) => setSchedulePayTimeText(normalizeFourDigitTimeInput(e.target.value))}
                               placeholder="비우면 일정 시작과 동일"
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                             />
@@ -3070,7 +3061,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             </div>
           }
         >
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
             {expenseDetailOpen.amount > 0 ? (
               <div className="flex items-baseline justify-between">
                 <div className="text-xs text-slate-400">금액</div>
@@ -3079,7 +3070,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 </div>
               </div>
             ) : null}
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <div className="mt-3 grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-slate-400">결제수단</div>
                 <div className="mt-1 font-semibold text-slate-900">{PAYMENT_TYPE_LABEL[expenseDetailOpen.paymentType]}</div>
@@ -3118,7 +3109,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             })() ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">이동</div>
-                <div className="mt-1 text-sm font-semibold text-slate-900">
+                <div className="mt-1 font-semibold text-slate-900">
                   {(expenseDetailOpen.transitMode ?? "") + " "}
                   {(expenseDetailOpen.transitFrom ?? "?") +
                     (expenseDetailOpen.transitVia ? ` → ${expenseDetailOpen.transitVia.split("|").join(" → ")}` : "") +
@@ -3132,13 +3123,13 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             {expenseDetailOpen.memo ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">내용</div>
-                <div className="mt-1 text-sm text-slate-800">{expenseDetailOpen.memo}</div>
+                <div className="mt-1 text-slate-800">{expenseDetailOpen.memo}</div>
               </div>
             ) : null}
             {expenseDetailOpen.detail ? (
               <div className="mt-3">
-                <div className="text-xs text-slate-400">세부내용</div>
-                <div className="mt-1 text-sm text-slate-800">
+                <div className="text-xs text-slate-400">세부 내용</div>
+                <div className="mt-1 text-slate-800">
                   {stripTransitRoutePrefix(
                     expenseDetailOpen.detail,
                     expenseDetailOpen.transitFrom,
@@ -3151,7 +3142,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             {expenseDetailOpen.participants ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">함께한 사람</div>
-                <div className="mt-1 text-sm text-slate-800">
+                <div className="mt-1 text-slate-800">
                   {Array.isArray(expenseDetailOpen.participants)
                     ? participantsDisplayWithoutMe(expenseDetailOpen.participants, "나")
                     : JSON.stringify(expenseDetailOpen.participants)}
@@ -3219,10 +3210,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               })()}
             </div>
           }
-          onClose={() => {
-            setScheduleDetailOpen(null);
-            setScheduleDetailTab("schedule");
-          }}
+          onClose={() => setScheduleDetailOpen(null)}
           footer={
             <div className="flex gap-3">
               <button
@@ -3233,7 +3221,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   const linked = expensesOccurringWithinSchedule(expensesData?.items ?? [], full);
                   fillComposeFromSchedule(full, linked);
                   setScheduleDetailOpen(null);
-                  setScheduleDetailTab("schedule");
                   setComposeOpen(true);
                 }}
               >
@@ -3250,7 +3237,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   setComposeEditScheduleId(null);
                   setComposeConvertFromScheduleId(null);
                   setScheduleDetailOpen(null);
-                  setScheduleDetailTab("schedule");
                   setComposeOpen(true);
                 }}
               >
@@ -3264,7 +3250,6 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   requestConfirm("기록이 사라집니다. 삭제하시겠습니까?", async () => {
                     await deleteSchedule.mutateAsync(id);
                     setScheduleDetailOpen(null);
-                    setScheduleDetailTab("schedule");
                   });
                 }}
               >
@@ -3273,84 +3258,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             </div>
           }
         >
-          <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-            <button
-              type="button"
-              className={cn(
-                "flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors",
-                scheduleDetailTab === "schedule"
-                  ? "bg-white text-indigo-700 shadow-sm"
-                  : "text-slate-500"
-              )}
-              onClick={() => setScheduleDetailTab("schedule")}
-            >
-              일정
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors",
-                scheduleDetailTab === "expense"
-                  ? "bg-white text-indigo-700 shadow-sm"
-                  : "text-slate-500"
-              )}
-              onClick={() => setScheduleDetailTab("expense")}
-            >
-              지출
-            </button>
-          </div>
-
-          <div className="mt-3">
-            {scheduleDetailTab === "schedule" ? (
-              <ScheduleDetailNoteBlock scheduleId={scheduleDetailOpen.id} note={scheduleDetailOpen.note} />
-            ) : (
-              <div className="space-y-2">
-                {scheduleDetailLinkedExpenses.map((e) => {
-                  const et = tintForCategory(e.category || "기타");
-                  return (
-                    <button
-                      key={e.id}
-                      type="button"
-                      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm hover:brightness-[0.99]"
-                      onClick={() => {
-                        setScheduleDetailOpen(null);
-                        setScheduleDetailTab("schedule");
-                        setExpenseDetailOpen(e);
-                      }}
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div
-                          className={cn(
-                            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg",
-                            et.border,
-                            et.bg
-                          )}
-                        >
-                          {emojiForCategory(e.category || "기타")}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-900">
-                            {e.merchant ?? normalizeCategory(e.category)}
-                          </div>
-                          <div className="mt-0.5 text-xs text-slate-400">
-                            {expenseTimeLabel(e.occurredAt, dayLocal00)} · {PAYMENT_TYPE_LABEL[e.paymentType]}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
-                        {formatWon(e.amount)}
-                      </div>
-                    </button>
-                  );
-                })}
-                {scheduleDetailLinkedExpenses.length === 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">
-                    이 일정 시간 안에 결제 시각이 있는 지출이 없어요. 기록 작성에서 일정과 비용을 함께 넣으면 이 탭에 표시돼요.
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
+          <ScheduleDetailNoteBlock title={scheduleDetailOpen.title} note={scheduleDetailOpen.note} />
         </ComposeSheet>
       ) : null}
 
