@@ -31,7 +31,7 @@ export default function Header(props: {
           <div className="flex min-w-0 justify-start">
             <Link
               to="/"
-              className="inline-flex shrink-0 active:scale-[0.99]"
+              className="inline-flex shrink-0 transition-opacity hover:opacity-80 active:scale-[0.99]"
               aria-label="투데잉 홈"
               title="투데잉"
             >
@@ -41,7 +41,7 @@ export default function Header(props: {
 
           <div className="flex shrink-0 items-center justify-center gap-1">
             <button
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 active:scale-[0.99]"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-transparent hover:text-indigo-600 active:scale-[0.99]"
               onClick={onPrev}
               aria-label={monthMode ? "이전 달" : "이전 날짜"}
               title="이전"
@@ -93,7 +93,7 @@ export default function Header(props: {
             </div>
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 active:scale-[0.99]"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-transparent hover:text-indigo-600 active:scale-[0.99]"
               onClick={onNext}
               aria-label={monthMode ? "다음 달" : "다음 날짜"}
               title="다음"

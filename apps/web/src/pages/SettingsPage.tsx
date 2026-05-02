@@ -87,7 +87,7 @@ export default function SettingsPage() {
         <div className="mx-auto flex max-w-md items-center gap-2 px-4 py-3">
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 active:scale-[0.99]"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-transparent hover:text-indigo-600 active:scale-[0.99]"
             aria-label="뒤로"
             onClick={() => navigate(-1)}
           >
