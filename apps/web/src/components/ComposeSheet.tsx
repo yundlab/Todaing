@@ -25,7 +25,7 @@ export default function ComposeSheet(props: {
           </div>
           <button
             type="button"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-transparent text-slate-500 hover:bg-slate-100 active:scale-[0.99]"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-transparent text-slate-500 transition-colors hover:bg-transparent hover:text-indigo-600 active:scale-[0.99]"
             onClick={props.onClose}
             aria-label="닫기"
           >
