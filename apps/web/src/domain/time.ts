@@ -40,3 +40,13 @@ export function parseFlexibleTimeToMinutes(input: string): number | null {
   return null;
 }
 
+/** 콜론 없이 숫자 네 자리만 입력했을 때 `HH:mm`으로 바꿈(유효한 시각일 때만). */
+export function normalizeFourDigitTimeInput(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed || trimmed.includes(":")) return input;
+  if (!/^\d{4}$/.test(trimmed)) return input;
+  const withColon = `${trimmed.slice(0, 2)}:${trimmed.slice(2)}`;
+  if (parseFlexibleTimeToMinutes(withColon) === null) return input;
+  return withColon;
+}
+

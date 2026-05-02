@@ -1,5 +1,6 @@
 import type { Transit2SegmentDraft } from "../../domain/transitPayload";
 import { yyyyMmDdLocal } from "../../domain/date";
+import { normalizeFourDigitTimeInput } from "../../domain/time";
 
 export default function Transit2Fields({
   segments,
@@ -46,7 +47,11 @@ export default function Transit2Fields({
                 <input
                   value={seg.start}
                   onChange={(e) =>
-                    setSegments(segments.map((s, i) => (i === idx ? { ...s, start: e.target.value } : s)))
+                    setSegments(
+                      segments.map((s, i) =>
+                        i === idx ? { ...s, start: normalizeFourDigitTimeInput(e.target.value) } : s
+                      )
+                    )
                   }
                   placeholder="예: 15:00"
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
@@ -57,7 +62,11 @@ export default function Transit2Fields({
                 <input
                   value={seg.end}
                   onChange={(e) =>
-                    setSegments(segments.map((s, i) => (i === idx ? { ...s, end: e.target.value } : s)))
+                    setSegments(
+                      segments.map((s, i) =>
+                        i === idx ? { ...s, end: normalizeFourDigitTimeInput(e.target.value) } : s
+                      )
+                    )
                   }
                   placeholder="선택"
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
