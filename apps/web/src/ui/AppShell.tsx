@@ -649,6 +649,16 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
   const deleteSchedule = useDeleteSchedule(dayKey);
 
   const [composeOpen, setComposeOpen] = useState(false);
+
+  // 작성 시트 열 때 시작 시간이 비어있으면 현재 시간으로 자동 채움
+  useEffect(() => {
+    if (composeOpen && !entryStartText.trim()) {
+      const now = new Date();
+      setEntryStartText(`${pad2(now.getHours())}:${pad2(now.getMinutes())}`);
+    }
+    // entryStartText 변경 시에는 다시 채우지 않음(사용자가 지웠다가 시트를 닫지 않은 상태 등)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeOpen]);
   /** 수정 모드일 때만 설정 (등록 폼과 동일 UI) */
   const [composeEditExpenseId, setComposeEditExpenseId] = useState<string | null>(null);
   const [composeEditScheduleId, setComposeEditScheduleId] = useState<string | null>(null);
@@ -2394,7 +2404,18 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                           "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
                           plannedAtEnabled ? "border-indigo-200" : "border-slate-200"
                         )}
-                        onClick={() => setPlannedAtEnabled((v) => !v)}
+                        onClick={() => {
+                          if (!plannedAtEnabled && !plannedAtLocal) {
+                            const now = new Date();
+                            const yyyy = now.getFullYear();
+                            const mm = pad2(now.getMonth() + 1);
+                            const dd = pad2(now.getDate());
+                            const hh = pad2(now.getHours());
+                            const mi = pad2(now.getMinutes());
+                            setPlannedAtLocal(`${yyyy}-${mm}-${dd}T${hh}:${mi}`);
+                          }
+                          setPlannedAtEnabled((v) => !v);
+                        }}
                       >
                         <div className="flex items-center gap-3">
                           <span
@@ -2438,7 +2459,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                               const t = plannedAtLocal.split("T")[1] ?? "";
                               setPlannedAtLocal(d ? `${d}T${t}` : "");
                             }}
-                            className="h-12 text-sm"
+                            iconAlign="center"
+                            className="h-12 text-sm text-transparent caret-transparent"
                           />
                           <input
                             type="text"
@@ -2451,7 +2473,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                               const d = plannedAtLocal.split("T")[0] ?? "";
                               setPlannedAtLocal(`${d}T${t}`);
                             }}
-                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm tabular-nums outline-none focus:border-slate-400"
+                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-center text-sm tabular-nums outline-none focus:border-slate-400"
                           />
                         </div>
                       ) : null}

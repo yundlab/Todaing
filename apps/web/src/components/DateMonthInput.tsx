@@ -24,23 +24,34 @@ export function CalendarIcon({ className }: { className?: string }) {
 
 /** date / datetime-local 공통: 네이티브 달력 아이콘은 숨기고 CalendarIcon 오버레이 사용 */
 export const calendarPickerIndicatorOverlayClasses =
-  "[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-[0.875rem] [&::-webkit-calendar-picker-indicator]:top-0 [&::-webkit-calendar-picker-indicator]:bottom-0 [&::-webkit-calendar-picker-indicator]:z-[1] [&::-webkit-calendar-picker-indicator]:m-auto [&::-webkit-calendar-picker-indicator]:h-9 [&::-webkit-calendar-picker-indicator]:w-9 [&::-webkit-calendar-picker-indicator]:max-h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 " +
-  "[&::-moz-calendar-picker-indicator]:absolute [&::-moz-calendar-picker-indicator]:right-[0.875rem] [&::-moz-calendar-picker-indicator]:top-0 [&::-moz-calendar-picker-indicator]:bottom-0 [&::-moz-calendar-picker-indicator]:z-[1] [&::-moz-calendar-picker-indicator]:m-auto [&::-moz-calendar-picker-indicator]:h-9 [&::-moz-calendar-picker-indicator]:w-9 [&::-moz-calendar-picker-indicator]:max-h-full [&::-moz-calendar-picker-indicator]:cursor-pointer [&::-moz-calendar-picker-indicator]:opacity-0";
+  "[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 " +
+  "[&::-moz-calendar-picker-indicator]:absolute [&::-moz-calendar-picker-indicator]:inset-0 [&::-moz-calendar-picker-indicator]:m-0 [&::-moz-calendar-picker-indicator]:h-full [&::-moz-calendar-picker-indicator]:w-full [&::-moz-calendar-picker-indicator]:cursor-pointer [&::-moz-calendar-picker-indicator]:opacity-0";
 
-const DateMonthInput = forwardRef<HTMLInputElement, ComponentPropsWithoutRef<"input">>(
-  function DateMonthInput({ className, ...props }, ref) {
+type DateMonthInputProps = ComponentPropsWithoutRef<"input"> & {
+  iconAlign?: "right" | "center";
+};
+
+const DateMonthInput = forwardRef<HTMLInputElement, DateMonthInputProps>(
+  function DateMonthInput({ className, iconAlign = "right", ...props }, ref) {
+    const isCenter = iconAlign === "center";
     return (
       <div className="relative min-w-0">
         <input
           ref={ref}
           {...props}
           className={cn(
-            "box-border w-full min-w-0 rounded-xl border border-slate-200 bg-white py-3 pl-3 pr-12 align-middle leading-normal outline-none focus:border-slate-400",
+            "box-border w-full min-w-0 rounded-xl border border-slate-200 bg-white py-3 align-middle leading-normal outline-none focus:border-slate-400",
+            isCenter ? "px-3 text-center" : "pl-3 pr-12",
             calendarPickerIndicatorOverlayClasses,
             className
           )}
         />
-        <span className="pointer-events-none absolute bottom-0 right-[0.875rem] top-0 z-0 flex items-center">
+        <span
+          className={cn(
+            "pointer-events-none absolute z-0 flex items-center",
+            isCenter ? "inset-0 justify-center" : "bottom-0 right-[0.875rem] top-0"
+          )}
+        >
           <CalendarIcon className="h-[1.125rem] w-[1.125rem] shrink-0 text-slate-400" />
         </span>
       </div>
