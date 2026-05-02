@@ -1,5 +1,6 @@
 import { cn } from "../cn";
 import type { Station } from "../../features/transit/stations";
+import { normalizeFourDigitTimeInput } from "../../domain/time";
 
 export default function Transit1Fields({
   legs,
@@ -129,7 +130,7 @@ export default function Transit1Fields({
                   onChange={(e) =>
                     setLegs((arr) => {
                       const next = [...arr];
-                      next[idx] = { ...(next[idx] as any), start: e.target.value };
+                      next[idx] = { ...(next[idx] as any), start: normalizeFourDigitTimeInput(e.target.value) };
                       return next;
                     })
                   }
@@ -144,7 +145,7 @@ export default function Transit1Fields({
                   onChange={(e) =>
                     setLegs((arr) => {
                       const next = [...arr];
-                      next[idx] = { ...(next[idx] as any), end: e.target.value };
+                      next[idx] = { ...(next[idx] as any), end: normalizeFourDigitTimeInput(e.target.value) };
                       return next;
                     })
                   }
