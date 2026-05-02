@@ -1,5 +1,6 @@
-import { useLayoutEffect, type CSSProperties } from "react";
+import { useLayoutEffect } from "react";
 import { cn } from "../cn";
+import { NATIVE_SELECT_CHEVRON_CLASS, NATIVE_SELECT_CHEVRON_STYLE } from "../nativeSelectChevron";
 import type { Station } from "../../features/transit/stations";
 import { normalizeFourDigitTimeInput } from "../../domain/time";
 
@@ -18,16 +19,6 @@ function CloseXIcon(props: { className?: string }) {
 }
 
 type SubwayLegSlice = { from: Station | null; to: Station | null; line: string };
-
-/** AppShell 카테고리 select와 동일: 네이티브 화살표 제거 + 오른쪽 chevron */
-const LINE_SELECT_CLASS =
-  "w-full min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white py-3 pl-3 pr-12 text-sm outline-none focus:border-slate-400 [appearance:none] [-webkit-appearance:none] [-moz-appearance:none]";
-const LINE_SELECT_ARROW_STYLE: CSSProperties = {
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 0.875rem center",
-  backgroundSize: "1.125rem 1.125rem"
-};
 
 function subwayLineChoices(leg: SubwayLegSlice): string[] {
   const from = leg.from?.lines ?? [];
@@ -311,8 +302,8 @@ export default function Transit1Fields({
                               return next;
                             })
                           }
-                          className={LINE_SELECT_CLASS}
-                          style={LINE_SELECT_ARROW_STYLE}
+                          className={cn(NATIVE_SELECT_CHEVRON_CLASS, "w-full")}
+                          style={NATIVE_SELECT_CHEVRON_STYLE}
                         >
                           {choices.map((ln) => (
                             <option key={ln} value={ln}>

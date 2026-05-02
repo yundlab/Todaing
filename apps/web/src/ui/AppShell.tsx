@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   useCreateExpense,
@@ -31,6 +30,7 @@ import ComposeSheet from "../components/ComposeSheet";
 import CardInstallmentFields from "../components/CardInstallmentFields";
 import { ClockIcon, UserIcon, MoneyIcon } from "../components/icons";
 import DateMonthInput from "../components/DateMonthInput";
+import { NATIVE_SELECT_CHEVRON_CLASS, NATIVE_SELECT_CHEVRON_STYLE } from "../components/nativeSelectChevron";
 import ExpenseCard from "../components/ExpenseCard";
 import SettlementRow from "../components/SettlementRow";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
@@ -176,14 +176,8 @@ function CategoryCardPreview({ category }: { category: string }) {
 }
 
 /** 네이티브 select 화살표는 오른쪽에 붙어 보이므로 제거 후 여백 있는 커스텀 화살표 사용 */
-const CATEGORY_SELECT_CLASS =
-  "min-w-0 flex-1 cursor-pointer rounded-xl border border-slate-200 bg-white py-3 pl-3 pr-12 text-sm outline-none focus:border-slate-400 [appearance:none] [-webkit-appearance:none] [-moz-appearance:none]";
-const CATEGORY_SELECT_ARROW_STYLE: CSSProperties = {
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 0.875rem center",
-  backgroundSize: "1.125rem 1.125rem"
-};
+const CATEGORY_SELECT_CLASS = cn("flex-1", NATIVE_SELECT_CHEVRON_CLASS);
+const CATEGORY_SELECT_ARROW_STYLE = NATIVE_SELECT_CHEVRON_STYLE;
 
 const PAYMENT_TYPE_LABEL: Record<Expense["paymentType"], string> = {
   CARD: "카드",
