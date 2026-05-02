@@ -28,8 +28,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "가산디지털단지",
     "lines": [
-      "7호선",
-      "수인·분당선"
+      "1호선",
+      "7호선"
     ]
   },
   {
@@ -77,7 +77,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "가평",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -95,7 +95,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "갈매",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -151,13 +151,13 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "강촌",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
     "name": "개롱",
     "lines": [
-      "수인·분당선"
+      "5호선"
     ]
   },
   {
@@ -187,7 +187,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "거여",
     "lines": [
-      "수인·분당선"
+      "5호선"
     ]
   },
   {
@@ -231,7 +231,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "경기광주",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -336,7 +336,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "곤지암",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -375,7 +375,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "관악",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -399,7 +399,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "광명",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -412,7 +412,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "광운대",
     "lines": [
       "1호선",
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -528,13 +528,13 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "군포",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "굴봉산",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -558,32 +558,32 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "금곡",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
     "name": "금릉",
     "lines": [
-      "경의·중앙·경춘"
+      "경의·중앙선"
     ]
   },
   {
     "name": "금정",
     "lines": [
-      "4호선",
-      "수인·분당선"
+      "1호선",
+      "4호선"
     ]
   },
   {
     "name": "금천구청",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "금촌",
     "lines": [
-      "경의·중앙·경춘"
+      "경의·중앙선"
     ]
   },
   {
@@ -620,7 +620,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "김유정",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -690,7 +690,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "남춘천",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -807,7 +807,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "당정",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -845,7 +845,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "대성리",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -961,7 +961,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "독산",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1074,7 +1074,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "두정",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1086,7 +1086,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "둔촌동",
     "lines": [
-      "수인·분당선"
+      "5호선"
     ]
   },
   {
@@ -1155,7 +1155,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "마석",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -1173,7 +1173,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "마천",
     "lines": [
-      "수인·분당선"
+      "5호선"
     ]
   },
   {
@@ -1197,8 +1197,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "망우",
     "lines": [
-      "경춘선",
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -1270,7 +1269,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "명학",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1313,7 +1312,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "문산",
     "lines": [
-      "경의·중앙·경춘"
+      "경의·중앙선"
     ]
   },
   {
@@ -1386,7 +1385,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "방이",
     "lines": [
-      "수인·분당선"
+      "5호선"
     ]
   },
   {
@@ -1404,7 +1403,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "배방",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1422,7 +1421,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "백양리",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -1452,13 +1451,13 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "별내",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
     "name": "병점",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1502,7 +1501,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "봉명",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1532,7 +1531,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "부발",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -1614,7 +1613,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "사릉",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -1657,7 +1656,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "삼동",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -1736,8 +1735,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "상봉",
     "lines": [
       "7호선",
-      "경춘선",
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -1767,7 +1765,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "상천",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -1815,7 +1813,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "서동탄",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1847,14 +1845,14 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "lines": [
       "1호선",
       "4호선",
-      "공항철도",
-      "수인·분당선"
+      "경의·중앙선",
+      "공항철도"
     ]
   },
   {
     "name": "서정리",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1891,7 +1889,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "석수",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1954,7 +1952,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "성균관대",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -1979,25 +1977,25 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "성환",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "세류",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "세마",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "세종대왕릉",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -2070,7 +2068,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "송탄",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -2119,8 +2117,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "수원",
     "lines": [
-      "분당선",
-      "수인·분당선"
+      "1호선",
+      "분당선"
     ]
   },
   {
@@ -2231,7 +2229,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "신내",
     "lines": [
       "6호선",
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -2275,7 +2273,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "신둔도예촌",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -2361,7 +2359,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "신창",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -2374,7 +2372,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "신촌",
     "lines": [
       "2호선",
-      "수인·분당선"
+      "경의·중앙선"
     ]
   },
   {
@@ -2410,13 +2408,13 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "쌍용",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "아산",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -2464,7 +2462,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "안양",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -2612,7 +2610,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "여주",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -2693,7 +2691,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "오금",
     "lines": [
       "3호선",
-      "수인·분당선"
+      "5호선"
     ]
   },
   {
@@ -2723,13 +2721,13 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "오산",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "오산대",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -2756,14 +2754,14 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "온양온천",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "올림픽공원",
     "lines": [
-      "9호선",
-      "수인·분당선"
+      "5호선",
+      "9호선"
     ]
   },
   {
@@ -2930,7 +2928,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "월롱",
     "lines": [
-      "경의·중앙·경춘"
+      "경의·중앙선"
     ]
   },
   {
@@ -2968,7 +2966,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "의왕",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -2998,7 +2996,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "이매",
     "lines": [
-      "경의·중앙·경춘",
+      "경강선",
       "분당선"
     ]
   },
@@ -3011,7 +3009,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "이천",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -3109,7 +3107,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "임진강",
     "lines": [
-      "경의·중앙·경춘"
+      "경의·중앙선"
     ]
   },
   {
@@ -3301,8 +3299,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "중랑",
     "lines": [
-      "경춘선",
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -3350,7 +3347,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "지제",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -3374,13 +3371,13 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "직산",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
     "name": "진위",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -3399,13 +3396,13 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "천마산",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
     "name": "천안",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -3456,9 +3453,9 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "청량리",
     "lines": [
       "1호선",
-      "경의·중앙·경춘",
       "경의·중앙선",
-      "수인·분당선"
+      "경춘선",
+      "분당선"
     ]
   },
   {
@@ -3470,7 +3467,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "청평",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -3482,7 +3479,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "초월",
     "lines": [
-      "경의·중앙·경춘"
+      "경강선"
     ]
   },
   {
@@ -3507,7 +3504,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "춘천",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -3564,19 +3561,19 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "퇴계원",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
     "name": "파주",
     "lines": [
-      "경의·중앙·경춘"
+      "경의·중앙선"
     ]
   },
   {
     "name": "판교",
     "lines": [
-      "경의·중앙·경춘",
+      "경강선",
       "신분당선"
     ]
   },
@@ -3589,7 +3586,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "평내호평",
     "lines": [
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
@@ -3601,7 +3598,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "평택",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -3742,7 +3739,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "화서",
     "lines": [
-      "수인·분당선"
+      "1호선"
     ]
   },
   {
@@ -3762,7 +3759,7 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "lines": [
       "1호선",
       "경의·중앙선",
-      "수인·분당선"
+      "경춘선"
     ]
   },
   {
