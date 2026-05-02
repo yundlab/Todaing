@@ -3042,6 +3042,20 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               </button>
               <button
                 type="button"
+                className="flex-1 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700 shadow-sm"
+                onClick={() => {
+                  // 복제: 기존 값으로 폼을 채우되 수정 ID는 비워서 "새 작성"으로 시작
+                  fillComposeFromExpense(expenseDetailOpen);
+                  setComposeEditExpenseId(null);
+                  setComposeConvertFromExpenseId(null);
+                  setExpenseDetailOpen(null);
+                  setComposeOpen(true);
+                }}
+              >
+                복제
+              </button>
+              <button
+                type="button"
                 className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm"
                 onClick={async () => {
                   const id = expenseDetailOpen.id;
@@ -3224,6 +3238,23 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 }}
               >
                 수정
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700 shadow-sm"
+                onClick={() => {
+                  // 복제: 기존 값으로 폼을 채우되 수정 ID는 비워서 "새 작성"으로 시작
+                  const full = scheduleDetailOpen;
+                  const linked = expensesOccurringWithinSchedule(expensesData?.items ?? [], full);
+                  fillComposeFromSchedule(full, linked);
+                  setComposeEditScheduleId(null);
+                  setComposeConvertFromScheduleId(null);
+                  setScheduleDetailOpen(null);
+                  setScheduleDetailTab("schedule");
+                  setComposeOpen(true);
+                }}
+              >
+                복제
               </button>
               <button
                 type="button"
