@@ -91,9 +91,9 @@ export default function BottomNav() {
   const itemClass = (active: boolean) =>
     cn(
       "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold transition-colors",
-      active ? "text-indigo-600" : "text-slate-400"
+      active ? "text-indigo-600" : "text-slate-400 hover:text-indigo-600"
     );
-  const iconClass = (active: boolean) => cn("h-5 w-5 shrink-0", active ? "text-indigo-600" : "text-slate-400");
+  const iconClass = (active: boolean) => cn("h-5 w-5 shrink-0", active ? "text-indigo-600" : "text-current");
 
   return (
     <nav

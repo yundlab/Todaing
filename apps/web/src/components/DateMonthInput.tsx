@@ -35,12 +35,12 @@ const DateMonthInput = forwardRef<HTMLInputElement, DateMonthInputProps>(
   function DateMonthInput({ className, iconAlign = "right", ...props }, ref) {
     const isCenter = iconAlign === "center";
     return (
-      <div className="relative min-w-0">
+      <div className="group relative min-w-0">
         <input
           ref={ref}
           {...props}
           className={cn(
-            "box-border w-full min-w-0 rounded-xl border border-slate-200 bg-white py-3 align-middle leading-normal outline-none focus:border-slate-400",
+            "box-border w-full min-w-0 rounded-xl border border-slate-200 bg-white py-3 align-middle leading-normal outline-none transition-colors focus:border-slate-400 group-hover:border-indigo-300",
             isCenter ? "px-3 text-center" : "pl-3 pr-12",
             calendarPickerIndicatorOverlayClasses,
             className
@@ -52,7 +52,7 @@ const DateMonthInput = forwardRef<HTMLInputElement, DateMonthInputProps>(
             isCenter ? "inset-0 justify-center" : "bottom-0 right-[0.875rem] top-0"
           )}
         >
-          <CalendarIcon className="h-[1.125rem] w-[1.125rem] shrink-0 text-slate-400" />
+          <CalendarIcon className="h-[1.125rem] w-[1.125rem] shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600" />
         </span>
       </div>
     );
