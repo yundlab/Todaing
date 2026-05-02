@@ -19,18 +19,34 @@ function lineForRow(extRaw, _metroRaw) {
   if (c === "D" || c === "d") return "신분당선";
   if (c === "Y") return "용인경전철";
   if (c === "U") return "의정부경전철";
-  if (c === "P") return "수인·분당선";
+  if (c === "P" || c === "p") {
+    const pm = ext.match(/^P(\d+)/i);
+    const pn = pm ? parseInt(pm[1], 10) : 0;
+    // CSV 기준:
+    // - P116~P140: 경춘선(광운대~춘천)
+    // - P1xx(그 외): 1호선(경부/장항 등)
+    // - P312~P313: 경의·중앙선(신촌, 서울역)
+    if (pn >= 310 && pn <= 319) return "경의·중앙선";
+    if (pn >= 116 && pn <= 140) return "경춘선";
+    if (pn >= 100 && pn <= 199) return "1호선";
+    // CSV: P549 둔촌동 ~ P555 마천 — 5호선(마천지선)
+    if (pn >= 500 && pn <= 599) return "5호선";
+    return "기타";
+  }
   if (c === "I") return "인천2호선";
   if (c === "K" || c === "k") {
     const km = ext.match(/^K(\d+)/i);
     const kn = km ? parseInt(km[1], 10) : 0;
     // open-seoul-subway: K2xx 대부분 분당·수인, K31x 서울~일산 경의, K11x~K13x 경의·경춘 등
-    if (kn >= 210 && kn <= 249) return "분당선";
+    // CSV: K209 청량리까지 분당(수인·분당) 구간이 포함됨
+    if (kn >= 200 && kn <= 249) return "분당선";
     if (kn >= 250 && kn <= 264) return "수인선";
-    if (kn >= 310 && kn <= 329) return "경의·중앙선";
+    if (kn >= 310 && kn <= 336) return "경의·중앙선";
     if (kn >= 110 && kn <= 118) return "경의·중앙선";
     if (kn >= 119 && kn <= 138) return "경춘선";
     if (kn >= 800 && kn <= 830) return "경의·중앙선";
+    // CSV: K410 판교 ~ K420 여주 — 경강선
+    if (kn >= 410 && kn <= 420) return "경강선";
     return "경의·중앙·경춘";
   }
 
