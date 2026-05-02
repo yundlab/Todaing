@@ -3,7 +3,7 @@ import type { Expense } from "../features/expenses/api";
 
 const DEFAULT_START = "";
 const DEFAULT_END = "";
-const DEFAULT_CATEGORY = "식사";
+const DEFAULT_CATEGORY = "교통1";
 
 /**
  * 지출/일정 작성 시트(compose)에서 쓰는 폼 상태 묶음.

@@ -648,12 +648,13 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
   const [composeOpen, setComposeOpen] = useState(false);
 
-  // 작성 시트 열 때 시작 시간이 비어있으면 현재 시간으로 자동 채움
+  // 작성 시트 열 때 시작 시간이 비어있으면 현재 시간으로 자동 채움(교통1·2는 구간/상단 시간을 비워 두기)
   useEffect(() => {
-    if (composeOpen && !entryStartText.trim()) {
-      const now = new Date();
-      setEntryStartText(`${pad2(now.getHours())}:${pad2(now.getMinutes())}`);
-    }
+    if (!composeOpen || entryStartText.trim()) return;
+    const cat = entryCategory.trim();
+    if (cat === "교통1" || cat === "교통2") return;
+    const now = new Date();
+    setEntryStartText(`${pad2(now.getHours())}:${pad2(now.getMinutes())}`);
     // entryStartText 변경 시에는 다시 채우지 않음(사용자가 지웠다가 시트를 닫지 않은 상태 등)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composeOpen]);
@@ -727,6 +728,19 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     reset: resetComposeForm
   } = useExpenseComposeForm();
 
+  // 교통2 (기차/버스/택시/비행기) - 단일 구간
+  const [exTransitMode, setExTransitMode] = useState<string>("🚆"); // 교통2: 🚆🚍🚖✈️
+  const [exTransitFromText, setExTransitFromText] = useState<string>("");
+  const [exTransitToText, setExTransitToText] = useState<string>("");
+  const [transit2SegmentsDraft, setTransit2SegmentsDraft] = useState<Transit2SegmentDraft[]>(() => [
+    { dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
+  ]);
+
+  // 교통1 (대중교통) - 다구간(환승) 지원
+  const [transitLegs, setTransitLegs] = useState<TransitLeg[]>(() => [
+    { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
+  ]);
+
   const handleComposeClose = useCallback(() => {
     setComposeOpen(false);
     setComposeEditExpenseId(null);
@@ -742,20 +756,9 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     setExTransitFromText("");
     setExTransitToText("");
     setTransit2SegmentsDraft([{ dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }]);
+    setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }]);
     resetComposeForm();
   }, [resetComposeForm, dayKey]);
-  // 교통2 (기차/시외/택시/비행기) - 단일 구간
-  const [exTransitMode, setExTransitMode] = useState<string>("🚆"); // 교통2: 🚆🚍🚖✈️
-  const [exTransitFromText, setExTransitFromText] = useState<string>("");
-  const [exTransitToText, setExTransitToText] = useState<string>("");
-  const [transit2SegmentsDraft, setTransit2SegmentsDraft] = useState<Transit2SegmentDraft[]>(() => [
-    { dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
-  ]);
-
-  // 교통1 (대중교통) - 다구간(환승) 지원
-  const [transitLegs, setTransitLegs] = useState<TransitLeg[]>(() => [
-    { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
-  ]);
 
   const [stationSearchOpen, setStationSearchOpen] = useState<StationSearchTarget | null>(null);
   const [stationQuery, setStationQuery] = useState("");
@@ -767,6 +770,15 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
   const isTransit1 = entryCategory.trim() === "교통1";
   const isTransit2 = entryCategory.trim() === "교통2";
+
+  // 교통1: 일정/지출의 시작·끝 시각은 구간(첫 출발~마지막 도착)과 동일 — 상단 시간 입력은 숨기고 여기서 맞춤
+  useEffect(() => {
+    if (!isTransit1 || transitLegs.length === 0) return;
+    const first = transitLegs[0] as { start?: string };
+    const last = transitLegs[transitLegs.length - 1] as { end?: string };
+    setEntryStartText(String(first?.start ?? "").trim());
+    setEntryEndText(String(last?.end ?? "").trim());
+  }, [isTransit1, transitLegs, setEntryStartText, setEntryEndText]);
 
   // 교통1 상태를 작성 화면 열 때/카테고리 바뀔 때 기본값으로 동기화
   const transit1Legs = isTransit1 ? transitLegs : [];
@@ -915,8 +927,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               if (anyS.mode === "BUS") {
                 return {
                   mode: "BUS" as const,
-                  start: String(anyS.start ?? "09:00"),
-                  end: String(anyS.end ?? "09:30"),
+                  start: String(anyS.start ?? ""),
+                  end: String(anyS.end ?? ""),
                   busNumber: String(anyS.busNumber ?? ""),
                   from: String(anyS.from ?? ""),
                   to: String(anyS.to ?? "")
@@ -925,8 +937,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               if (anyS.mode === "SUBWAY") {
                 return {
                   mode: "SUBWAY" as const,
-                  start: String(anyS.start ?? "09:00"),
-                  end: String(anyS.end ?? "09:30"),
+                  start: String(anyS.start ?? ""),
+                  end: String(anyS.end ?? ""),
                   from: null,
                   to: null,
                   line: String(anyS.line ?? "")
@@ -940,8 +952,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             : [
                 {
                   mode: "SUBWAY",
-                  start: "09:00",
-                  end: "09:30",
+                  start: "",
+                  end: "",
                   from: null,
                   to: null,
                   line: ""
@@ -950,12 +962,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         });
       } else {
         setTransitLegs([
-          { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
+          { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
         ]);
       }
     } else {
       setTransitLegs([
-        { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
+        { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
       ]);
     }
     if (normalizeCategory(base.category) === "교통2") {
@@ -1016,9 +1028,14 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     const endHhMm = full.endAt
       ? `${pad2(new Date(full.endAt).getHours())}:${pad2(new Date(full.endAt).getMinutes())}`
       : "";
-    setEntryStartText(startHhMm);
-    setEntryEndText(endHhMm);
     const parsed = parseEmojiPrefixedTitle(full.title);
+    if (parsed.category === "교통1" || parsed.category === "교통2") {
+      setEntryStartText("");
+      setEntryEndText("");
+    } else {
+      setEntryStartText(startHhMm);
+      setEntryEndText(endHhMm);
+    }
     setEntryCategory(parsed.category);
     setEntryTitle(parsed.content);
     const np = parseScheduleNote(full.note);
@@ -1064,8 +1081,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               if (anyS.mode === "BUS") {
                 return {
                   mode: "BUS" as const,
-                  start: String(anyS.start ?? "09:00"),
-                  end: String(anyS.end ?? "09:30"),
+                  start: String(anyS.start ?? ""),
+                  end: String(anyS.end ?? ""),
                   busNumber: String(anyS.busNumber ?? ""),
                   from: String(anyS.from ?? ""),
                   to: String(anyS.to ?? "")
@@ -1074,8 +1091,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               if (anyS.mode === "SUBWAY") {
                 return {
                   mode: "SUBWAY" as const,
-                  start: String(anyS.start ?? "09:00"),
-                  end: String(anyS.end ?? "09:30"),
+                  start: String(anyS.start ?? ""),
+                  end: String(anyS.end ?? ""),
                   from: null,
                   to: null,
                   line: String(anyS.line ?? "")
@@ -1089,8 +1106,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             : [
                 {
                   mode: "SUBWAY" as const,
-                  start: startHhMm,
-                  end: endHhMm || startHhMm,
+                  start: "",
+                  end: "",
                   from: null,
                   to: null,
                   line: ""
@@ -1101,8 +1118,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
         setTransitLegs([
           {
             mode: "SUBWAY",
-            start: startHhMm,
-            end: endHhMm || startHhMm,
+            start: "",
+            end: "",
             from: null,
             to: null,
             line: ""
@@ -1111,15 +1128,58 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
       }
     } else {
       setTransitLegs([
-        { mode: "SUBWAY", start: "09:00", end: "09:30", from: null, to: null, line: "" }
+        { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
       ]);
     }
+    const scheduleDayKey = yyyyMmDdLocal(new Date(full.startAt));
     if (parsed.category === "교통2") {
       const tr2 = linked.find((x) => normalizeCategory(x.category) === "교통2");
       if (tr2) {
         setExTransitMode(tr2.transitMode ?? "🚆");
         setExTransitFromText(tr2.transitFrom ?? "");
         setExTransitToText(tr2.transitTo ?? "");
+        const seg = tr2.transitSegments;
+        if (Array.isArray(seg) && seg.length && typeof seg[0] === "object") {
+          const mapped = seg
+            .map((s: any) => {
+              const dayKeySeg = typeof s?.dayKey === "string" ? s.dayKey : scheduleDayKey;
+              const start = typeof s?.start === "string" ? s.start : "";
+              const end = typeof s?.end === "string" ? s.end : "";
+              const fromText = typeof s?.from === "string" ? s.from : (tr2.transitFrom ?? "");
+              const toText = typeof s?.to === "string" ? s.to : (tr2.transitTo ?? "");
+              const mode = typeof s?.mode === "string" ? s.mode : (tr2.transitMode ?? "🚆");
+              const memoText = typeof s?.memo === "string" ? s.memo : "";
+              return { dayKey: dayKeySeg, start, end, fromText, toText, mode, memoText };
+            })
+            .filter(Boolean) as Transit2SegmentDraft[];
+          setTransit2SegmentsDraft(
+            mapped.length
+              ? mapped
+              : [
+                  {
+                    dayKey: scheduleDayKey,
+                    start: "",
+                    end: "",
+                    fromText: tr2.transitFrom ?? "",
+                    toText: tr2.transitTo ?? "",
+                    mode: tr2.transitMode ?? "🚆",
+                    memoText: ""
+                  }
+                ]
+          );
+        } else {
+          setTransit2SegmentsDraft([
+            {
+              dayKey: scheduleDayKey,
+              start: "",
+              end: "",
+              fromText: tr2.transitFrom ?? "",
+              toText: tr2.transitTo ?? "",
+              mode: (tr2.transitMode ?? "").trim() || "🚆",
+              memoText: ""
+            }
+          ]);
+        }
       } else {
         const memo = np.memo ?? "";
         const transitLine = memo
@@ -1133,16 +1193,33 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
           setExTransitMode(token || "🚆");
           setExTransitFromText(fromRaw ?? "");
           setExTransitToText(toRaw ?? "");
+          setTransit2SegmentsDraft([
+            {
+              dayKey: scheduleDayKey,
+              start: "",
+              end: "",
+              fromText: fromRaw ?? "",
+              toText: toRaw ?? "",
+              mode: (token || "🚆").trim() || "🚆",
+              memoText: ""
+            }
+          ]);
         } else {
           setExTransitMode("🚆");
           setExTransitFromText("");
           setExTransitToText("");
+          setTransit2SegmentsDraft([
+            { dayKey: scheduleDayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
+          ]);
         }
       }
     } else {
       setExTransitMode("🚆");
       setExTransitFromText("");
       setExTransitToText("");
+      setTransit2SegmentsDraft([
+        { dayKey: scheduleDayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
+      ]);
     }
   }
 
@@ -2172,7 +2249,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
       <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-40">
         <div className="mx-auto flex w-full max-w-md justify-end px-6">
           <button
-            className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.99]"
+            className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500 active:scale-[0.99]"
             onClick={() => {
               setComposeEditExpenseId(null);
               setComposeEditScheduleId(null);
@@ -2182,6 +2259,13 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               setSchedulePayTimeText("");
               setSchedulePeopleText("");
               resetComposeForm();
+              setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }]);
+              setTransit2SegmentsDraft([
+                { dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
+              ]);
+              setExTransitMode("🚆");
+              setExTransitFromText("");
+              setExTransitToText("");
               setComposeOpen(true);
             }}
             aria-label="기록하기"
@@ -2346,7 +2430,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   </button>
                 </div>
                 <div className="col-span-2 grid grid-cols-2 gap-3">
-                  <label className="min-w-0">
+                  <label className={cn("min-w-0", isTransit1 && "col-span-2")}>
                     <div className="mb-1 text-xs text-slate-400">날짜(필수)</div>
                     <DateMonthInput
                       type="date"
@@ -2359,34 +2443,47 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                       className="h-12 text-sm"
                     />
                   </label>
-                  {composeKind === "schedule" ? (
-                    <div className="min-w-0">
-                      <div className="mb-1 text-xs text-slate-400">&nbsp;</div>
-                      <button
-                        type="button"
-                        className={cn(
-                          "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
-                          scheduleShowOnCalendar ? "border-indigo-200" : "border-slate-200"
-                        )}
-                        onClick={() => setScheduleShowOnCalendar((v) => !v)}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={cn(
-                              "inline-flex h-5 w-5 items-center justify-center rounded border",
-                              scheduleShowOnCalendar
-                                ? "border-indigo-600 bg-indigo-600 text-white"
-                                : "border-slate-300 bg-white text-transparent"
-                            )}
-                            aria-hidden
-                          >
-                            ✓
-                          </span>
-                          <span className="text-sm font-semibold text-slate-900">달력</span>
-                        </div>
-                      </button>
-                    </div>
-                  ) : composeKind === "expense" && !isTransit2 ? (
+                  {!isTransit1 ? (
+                    isTransit2 ? (
+                      <label className="min-w-0">
+                        <div className="mb-1 text-xs text-slate-400">시간(필수)</div>
+                        <input
+                          value={entryStartText}
+                          onChange={(e) => {
+                            setEntryStartText(normalizeFourDigitTimeInput(e.target.value));
+                          }}
+                          placeholder="예: 09:00"
+                          className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm tabular-nums outline-none focus:border-slate-400"
+                        />
+                      </label>
+                    ) : composeKind === "schedule" ? (
+                      <div className="min-w-0">
+                        <div className="mb-1 text-xs text-slate-400">&nbsp;</div>
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
+                            scheduleShowOnCalendar ? "border-indigo-200" : "border-slate-200"
+                          )}
+                          onClick={() => setScheduleShowOnCalendar((v) => !v)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={cn(
+                                "inline-flex h-5 w-5 items-center justify-center rounded border",
+                                scheduleShowOnCalendar
+                                  ? "border-indigo-600 bg-indigo-600 text-white"
+                                  : "border-slate-300 bg-white text-transparent"
+                              )}
+                              aria-hidden
+                            >
+                              ✓
+                            </span>
+                            <span className="text-sm font-semibold text-slate-900">달력</span>
+                          </div>
+                        </button>
+                      </div>
+                    ) : composeKind === "expense" ? (
                     <div className="min-w-0">
                       <div className="mb-1 text-xs text-slate-400 opacity-0 select-none">&nbsp;</div>
                       <button
@@ -2469,57 +2566,115 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         </div>
                       ) : null}
                     </div>
-                  ) : (
-                    <div />
-                  )}
+                    ) : (
+                      <div />
+                    )
+                  ) : null}
+                  {composeKind === "schedule" && isTransit1 ? (
+                    <div className="col-span-2 min-w-0">
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
+                          scheduleShowOnCalendar ? "border-indigo-200" : "border-slate-200"
+                        )}
+                        onClick={() => setScheduleShowOnCalendar((v) => !v)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              "inline-flex h-5 w-5 items-center justify-center rounded border",
+                              scheduleShowOnCalendar
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-slate-300 bg-white text-transparent"
+                            )}
+                            aria-hidden
+                          >
+                            ✓
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900">달력</span>
+                        </div>
+                      </button>
+                    </div>
+                  ) : null}
+                  {composeKind === "schedule" && isTransit2 ? (
+                    <div className="col-span-2 min-w-0">
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
+                          scheduleShowOnCalendar ? "border-indigo-200" : "border-slate-200"
+                        )}
+                        onClick={() => setScheduleShowOnCalendar((v) => !v)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              "inline-flex h-5 w-5 items-center justify-center rounded border",
+                              scheduleShowOnCalendar
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-slate-300 bg-white text-transparent"
+                            )}
+                            aria-hidden
+                          >
+                            ✓
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900">달력</span>
+                        </div>
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-                <label>
-                  <div className="mb-1 text-xs text-slate-400">
-                    {composeEditExpenseId ||
-                    composeEditScheduleId ||
-                    composeConvertFromExpenseId ||
-                    composeConvertFromScheduleId
-                      ? "시작(필수)"
-                      : isTransitCategory
-                        ? "출발시간(필수)"
-                        : "시작(필수)"}
-                  </div>
-                  <input
-                    value={entryStartText}
-                    onChange={(e) => {
-                      setEntryStartText(normalizeFourDigitTimeInput(e.target.value));
-                    }}
-                    placeholder="예: 09:00 (05:00~28:30)"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label>
-                  <div className="mb-1 text-xs text-slate-400">
-                    {composeEditExpenseId ||
-                    composeEditScheduleId ||
-                    composeConvertFromExpenseId ||
-                    composeConvertFromScheduleId
-                      ? "끝"
-                      : isTransitCategory
-                        ? "도착시간"
-                        : "끝"}
-                  </div>
-                  <input
-                    value={entryEndText}
-                    onChange={(e) => setEntryEndText(normalizeFourDigitTimeInput(e.target.value))}
-                    placeholder={
-                      isTransitCategory ? "예: 09:30 (05:00~28:30)" : "비워두면 끝 시간 없음 · 예: 09:30"
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
+                {!isTransit1 && !isTransit2 ? (
+                  <>
+                    <label>
+                      <div className="mb-1 text-xs text-slate-400">시작(필수)</div>
+                      <input
+                        value={entryStartText}
+                        onChange={(e) => {
+                          setEntryStartText(normalizeFourDigitTimeInput(e.target.value));
+                        }}
+                        placeholder="예: 09:00 (05:00~28:30)"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                    <label>
+                      <div className="mb-1 text-xs text-slate-400">끝</div>
+                      <input
+                        value={entryEndText}
+                        onChange={(e) => setEntryEndText(normalizeFourDigitTimeInput(e.target.value))}
+                        placeholder={
+                          isTransitCategory ? "예: 09:30 (05:00~28:30)" : "비워두면 끝 시간 없음 · 예: 09:30"
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  </>
+                ) : null}
                 <label className="col-span-2">
                   <div className="mb-1 text-xs text-slate-400">카테고리(필수)</div>
                   <div className="flex items-center gap-3">
                     <CategoryCardPreview category={entryCategory} />
                     <select
                       value={entryCategory}
-                      onChange={(e) => setEntryCategory(e.target.value)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const prev = entryCategory.trim();
+                        const nextCat = v.trim();
+                        if (nextCat === "교통1" && prev !== "교통1") {
+                          setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }]);
+                        }
+                        if (nextCat === "교통2" && prev !== "교통2") {
+                          setEntryStartText("");
+                          setEntryEndText("");
+                          setTransit2SegmentsDraft((segs) =>
+                            segs.length
+                              ? segs.map((s) => ({ ...s, start: "", end: "" }))
+                              : [{ dayKey: composeDayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }]
+                          );
+                        }
+                        setEntryCategory(v);
+                      }}
                       className={CATEGORY_SELECT_CLASS}
                       style={CATEGORY_SELECT_ARROW_STYLE}
                     >
@@ -2568,15 +2723,17 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
                 {composeKind === "expense" ? (
                   <>
-                    <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">결제처(필수)</div>
-                      <input
-                        value={exMerchant}
-                        onChange={(e) => setExMerchant(e.target.value)}
-                        placeholder="예: CGV / 편의점 / 택시"
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                      />
-                    </label>
+                    {!isTransit1 ? (
+                      <label className="col-span-2">
+                        <div className="mb-1 text-xs text-slate-400">결제처(필수)</div>
+                        <input
+                          value={exMerchant}
+                          onChange={(e) => setExMerchant(e.target.value)}
+                          placeholder="예: CGV / 편의점 / 택시"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                        />
+                      </label>
+                    ) : null}
                     <label className="col-span-2">
                       <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
                       <input
@@ -2681,15 +2838,17 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                             />
                           </label>
-                          <label className="block">
-                            <div className="mb-1 text-xs text-slate-400">결제처(필수)</div>
-                            <input
-                              value={exMerchant}
-                              onChange={(e) => setExMerchant(e.target.value)}
-                              placeholder="예: CGV / 편의점 / 택시"
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                            />
-                          </label>
+                          {!isTransit1 ? (
+                            <label className="block">
+                              <div className="mb-1 text-xs text-slate-400">결제처(필수)</div>
+                              <input
+                                value={exMerchant}
+                                onChange={(e) => setExMerchant(e.target.value)}
+                                placeholder="예: CGV / 편의점 / 택시"
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                              />
+                            </label>
+                          ) : null}
                           <label className="block">
                             <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
                             <input
@@ -2978,12 +3137,26 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 ? { ...cur, from: station }
                 : { ...cur, to: station };
 
-            // 라인 자동 추천(교집합)
+            // 호선: 교집합 우선, 없으면 양 역 합집합에서 선택(이미 Transit1Fields에서 셀렉트)
             if (updated.from && updated.to) {
-              const common = updated.from.lines.find((l) => updated.to?.lines.includes(l));
-              updated.line = common ?? updated.from.lines[0] ?? "";
+              const a = updated.from.lines;
+              const b = updated.to.lines;
+              const inter = a.filter((l) => b.includes(l));
+              const pool = inter.length > 0 ? inter : [...new Set([...a, ...b])];
+              const sorted = [...pool].sort((x, y) => x.localeCompare(y, "ko"));
+              updated.line =
+                sorted.length === 1
+                  ? sorted[0]!
+                  : sorted.includes(updated.line)
+                    ? updated.line
+                    : sorted[0] ?? "";
             } else if (target.field === "from") {
-              updated.line = station.lines[0] ?? updated.line;
+              const only = [...station.lines].sort((x, y) => x.localeCompare(y, "ko"));
+              updated.line = only.length === 1 ? only[0]! : only.includes(updated.line) ? updated.line : "";
+            } else {
+              const only = [...station.lines].sort((x, y) => x.localeCompare(y, "ko"));
+              if (only.length === 1) updated.line = only[0]!;
+              else if (!only.includes(updated.line)) updated.line = "";
             }
 
             next[target.legIndex] = updated;
