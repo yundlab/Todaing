@@ -208,7 +208,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         return;
       }
       const merchantTrim = exMerchant.trim();
-      if (!merchantTrim) {
+      if (catNorm !== "교통1" && !merchantTrim) {
         window.alert("결제처를 입력해줘.");
         return;
       }
@@ -266,7 +266,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
       const participantsAll =
         expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
 
-      const merchantFinal = merchantTrim;
+      const merchantFinal = merchantTrim ? merchantTrim : null;
 
       try {
         await createExpense({
@@ -313,12 +313,13 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
   async function submitEditExpense(args: ComposeSubmitArgs) {
     if (!composeEditExpenseId) return;
     const { category, title, startMin } = args;
+    const catNorm = normalizeCategory(category);
     if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
       window.alert("기타 결제수단 이름을 입력해줘.");
       return;
     }
     const merchantTrim = exMerchant.trim();
-    if (!merchantTrim) {
+    if (catNorm !== "교통1" && !merchantTrim) {
       window.alert("결제처를 입력해줘.");
       return;
     }
@@ -338,7 +339,6 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     const occurredAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
     const endAt =
       endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
-    const catNorm = normalizeCategory(category);
     const payerName =
       payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
     const participants =
@@ -507,7 +507,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         return;
       }
       const merchantTrim = exMerchant.trim();
-      if (!merchantTrim) {
+      if (catNorm !== "교통1" && !merchantTrim) {
         window.alert("결제처를 입력해줘.");
         return;
       }
@@ -535,7 +535,6 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
           toText: exTransitToText
         }
       });
-      const catNorm = normalizeCategory(category);
       const transit2SegmentsPayload =
         catNorm === "교통2"
           ? transit2SegmentsDraft.map((s) => ({
@@ -567,7 +566,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
       const participantsAll =
         expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
 
-      const merchantFinal = merchantTrim;
+      const merchantFinal = merchantTrim ? merchantTrim : null;
 
       try {
         await createExpense({
@@ -617,6 +616,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
 
   async function submitNewExpense(args: ComposeSubmitArgs) {
     const { category, title, startMin, convertFromScheduleId } = args;
+    const catNorm = normalizeCategory(category);
     const endRequired = false;
     const endMinParsed = entryEndText.trim()
       ? parseFlexibleTimeToMinutes(entryEndText)
@@ -649,7 +649,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     }
 
     const merchantTrim = exMerchant.trim();
-    if (!merchantTrim) {
+    if (catNorm !== "교통1" && !merchantTrim) {
       window.alert("결제처를 입력해줘.");
       return;
     }
@@ -696,7 +696,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         occurredAt: startAt,
         endAt,
         amount,
-        category,
+        category: catNorm,
         merchant: merchantTrim ? merchantTrim : null,
         detail: detailOnly ? detailOnly : null,
         memo: memoText ? memoText : null,
