@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { env } from "./env.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { schedulesRouter } from "./routes/schedules.js";
+import { tagoTransitRouter } from "./routes/tagoTransit.js";
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.post("/auth/google", (req, res) => {
 
 app.use("/api/expenses", expensesRouter);
 app.use("/api/schedules", schedulesRouter);
+app.use("/api/transit/tago", tagoTransitRouter);
 
 app.listen(env.PORT, () => {
   console.log(`API listening on http://localhost:${env.PORT}`);
