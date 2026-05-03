@@ -2,6 +2,9 @@
  * 수도권 전철 역 목록 생성 (검색용).
  * 원본: https://github.com/chanyou/open-seoul-subway/blob/master/station_code.csv
  * 노선명은 external_code·내부코드 규칙으로 추론(일부 광역·국철은 넓게 묶음).
+ *
+ * CSV에 없는 **수도권 광역급행철도 A노선(GTX-A)** 은 아래에서 수동 병합합니다.
+ * (참고: 국토부 고시·위키 등 — 남북 직결 전 구간은 공사·개통 시점에 맞춰 조정)
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -92,17 +95,57 @@ for (let i = 1; i < lines.length; i++) {
   byName.get(row.name).add(line);
 }
 
-const stations = Array.from(byName.entries())
+let stations = Array.from(byName.entries())
   .map(([name, set]) => ({
     name,
     lines: Array.from(set).sort((a, b) => a.localeCompare(b, "ko"))
   }))
   .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
+/** 수도권 광역급행철도 A노선(통칭 GTX-A) — CSV 미포함·신설역 보강 */
+const GTX_A = "GTX-A";
+const GTX_A_ON_EXISTING = new Set(["대곡", "연신내", "서울역", "삼성", "수서", "구성"]);
+const GTX_A_ONLY_STATIONS = [
+  { name: "운정중앙", lines: [GTX_A] },
+  { name: "킨텍스", lines: [GTX_A] },
+  { name: "창릉", lines: [GTX_A] },
+  { name: "성남", lines: [GTX_A] },
+  { name: "동탄", lines: [GTX_A] }
+];
+
+function mergeGtxA(list) {
+  const byName = new Map(list.map((s) => [s.name, { name: s.name, lines: [...s.lines] }]));
+  for (const n of GTX_A_ON_EXISTING) {
+    const s = byName.get(n);
+    if (s && !s.lines.includes(GTX_A)) s.lines.push(GTX_A);
+  }
+  for (const extra of GTX_A_ONLY_STATIONS) {
+    const cur = byName.get(extra.name);
+    if (!cur) {
+      byName.set(extra.name, { name: extra.name, lines: [...extra.lines] });
+    } else {
+      for (const ln of extra.lines) {
+        if (!cur.lines.includes(ln)) cur.lines.push(ln);
+      }
+    }
+  }
+  return Array.from(byName.values())
+    .map((s) => ({
+      name: s.name,
+      lines: [...s.lines].sort((a, b) => a.localeCompare(b, "ko"))
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
+
+stations = mergeGtxA(stations);
+
 const header = `/**
  * 자동 생성 — scripts/build-capital-metro-stations.mjs
  * 원본 CSV: chanyou/open-seoul-subway (station_code.csv)
+ * + GTX-A(수도권광역급행철도 A노선): 스크립트에서 역·노선 병합
  * 갱신: repo 루트에서 \`node scripts/build-capital-metro-stations.mjs\`
+ *
+ * 번들: \`features/transit/stations.ts\`의 \`loadCapitalMetroStations()\`가 이 파일을 동적 import 하므로 초기 로드에 포함되지 않습니다.
  */
 export type CapitalMetroStation = { name: string; lines: string[] };
 

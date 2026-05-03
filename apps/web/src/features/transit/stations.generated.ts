@@ -1,7 +1,10 @@
 /**
  * 자동 생성 — scripts/build-capital-metro-stations.mjs
  * 원본 CSV: chanyou/open-seoul-subway (station_code.csv)
+ * + GTX-A(수도권광역급행철도 A노선): 스크립트에서 역·노선 병합
  * 갱신: repo 루트에서 `node scripts/build-capital-metro-stations.mjs`
+ *
+ * 번들: `features/transit/stations.ts`의 `loadCapitalMetroStations()`가 이 파일을 동적 import 하므로 초기 로드에 포함되지 않습니다.
  */
 export type CapitalMetroStation = { name: string; lines: string[] };
 
@@ -479,7 +482,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "구성",
     "lines": [
-      "분당선"
+      "분당선",
+      "GTX-A"
     ]
   },
   {
@@ -814,7 +818,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "대곡",
     "lines": [
       "3호선",
-      "경의·중앙선"
+      "경의·중앙선",
+      "GTX-A"
     ]
   },
   {
@@ -1069,6 +1074,12 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "동춘",
     "lines": [
       "인천2호선"
+    ]
+  },
+  {
+    "name": "동탄",
+    "lines": [
+      "GTX-A"
     ]
   },
   {
@@ -1668,7 +1679,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
   {
     "name": "삼성",
     "lines": [
-      "2호선"
+      "2호선",
+      "GTX-A"
     ]
   },
   {
@@ -1846,7 +1858,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
       "1호선",
       "4호선",
       "경의·중앙선",
-      "공항철도"
+      "공항철도",
+      "GTX-A"
     ]
   },
   {
@@ -1953,6 +1966,12 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "성균관대",
     "lines": [
       "1호선"
+    ]
+  },
+  {
+    "name": "성남",
+    "lines": [
+      "GTX-A"
     ]
   },
   {
@@ -2111,7 +2130,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "수서",
     "lines": [
       "3호선",
-      "분당선"
+      "분당선",
+      "GTX-A"
     ]
   },
   {
@@ -2641,7 +2661,8 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "연신내",
     "lines": [
       "3호선",
-      "6호선"
+      "6호선",
+      "GTX-A"
     ]
   },
   {
@@ -2862,6 +2883,12 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "운정",
     "lines": [
       "경의·중앙선"
+    ]
+  },
+  {
+    "name": "운정중앙",
+    "lines": [
+      "GTX-A"
     ]
   },
   {
@@ -3388,6 +3415,12 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     ]
   },
   {
+    "name": "창릉",
+    "lines": [
+      "GTX-A"
+    ]
+  },
+  {
     "name": "창신",
     "lines": [
       "6호선"
@@ -3525,6 +3558,12 @@ export const CAPITAL_AREA_STATIONS: CapitalMetroStation[] = [
     "name": "캠퍼스타운",
     "lines": [
       "인천2호선"
+    ]
+  },
+  {
+    "name": "킨텍스",
+    "lines": [
+      "GTX-A"
     ]
   },
   {
