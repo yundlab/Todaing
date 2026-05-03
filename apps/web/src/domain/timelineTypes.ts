@@ -24,4 +24,6 @@ export type TimelineItem =
       startText: string;
       endText: string;
       usageMemo: string;
+      /** 교통2 구간별 이용 카드: 그날 구간에 저장된 수단 이모지(🚆·🚍·🚖·✈️ 등) */
+      usageTransitMode?: string;
     };

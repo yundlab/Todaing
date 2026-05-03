@@ -158,11 +158,9 @@ export default function Transit1Fields({
       </div>
       <div className="mt-2 space-y-2">
         {legs.map((leg, idx) => (
-          <div key={idx} className="rounded-2xl border border-slate-200 bg-white px-3 pb-3 pt-2 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold text-slate-500">
-                {idx === 0 ? "구간" : `환승 ${idx}`}
-              </div>
+          <div key={idx} className="rounded-2xl border border-slate-200 bg-white px-3 pb-3 pt-3 shadow-sm">
+            <div className="flex min-h-9 items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-slate-500">{`구간${idx + 1}`}</div>
               {idx > 0 ? (
                 <button
                   type="button"
@@ -176,7 +174,9 @@ export default function Transit1Fields({
                 >
                   <CloseXIcon className="h-5 w-5" />
                 </button>
-              ) : null}
+              ) : (
+                <span className="inline-flex h-9 w-9 shrink-0" aria-hidden />
+              )}
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-3">
@@ -365,7 +365,7 @@ export default function Transit1Fields({
                   const pool = subwayLinePool(sl.from, sl.to);
                   const ctx = linePickContextForLeg(legs, idx, sl);
                   const choices = orderSubwayLineChoices(pool, ctx);
-                  const lineLabel = idx === 0 ? "호선" : "환승 호선";
+                  const lineLabel = "호선";
                   if (choices.length > 1) {
                     return (
                       <label className="col-span-2">
@@ -421,7 +421,7 @@ export default function Transit1Fields({
             )}
 
             <label className="mt-2 block">
-              <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
+              <div className="mb-1 text-xs text-slate-400">금액 · 환승 구간은 0원 가능</div>
               <input
                 inputMode="numeric"
                 value={String((leg as { amount?: string }).amount ?? "")}
@@ -435,8 +435,8 @@ export default function Transit1Fields({
                     return next;
                   })
                 }
-                placeholder="예: 1,500"
-                className={fieldRequired}
+                placeholder="예: 1,500 또는 0"
+                className={fieldOptional}
               />
             </label>
           </div>

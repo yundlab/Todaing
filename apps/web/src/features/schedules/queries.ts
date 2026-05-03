@@ -6,18 +6,25 @@ async function invalidateSchedules(qc: QueryClient) {
   await qc.invalidateQueries({ queryKey: ["schedules"] });
 }
 
-export function useSchedules(day: string) {
+export function useSchedules(day: string, opts?: { enabled?: boolean }) {
+  const enabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: ["schedules", day],
-    queryFn: () => listSchedules(day)
+    queryFn: () => listSchedules(day),
+    enabled
   });
 }
 
-export function useMonthSchedules(monthKey: string, opts?: { onlyCalendar?: boolean }) {
+export function useMonthSchedules(
+  monthKey: string,
+  opts?: { onlyCalendar?: boolean; enabled?: boolean }
+) {
   const onlyCalendar = !!opts?.onlyCalendar;
+  const enabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: ["schedules", "month", monthKey, { onlyCalendar }],
-    queryFn: () => listMonthSchedules(monthKey, { onlyCalendar })
+    queryFn: () => listMonthSchedules(monthKey, { onlyCalendar }),
+    enabled
   });
 }
 

@@ -40,7 +40,7 @@ corepack pnpm dev
 ```
 
 ### 접속
-- **Web(PWA)**: `http://localhost:5173`
+- **Web(PWA)**: `http://localhost:5176` (`apps/web/vite.config.ts`의 `server.port` — 5173은 다른 로컬 서비스와 겹치지 않게 둠)
 - **API health**: `http://localhost:8787/health`
 - **Expenses API**
   - `GET /api/expenses` (최근 50건)

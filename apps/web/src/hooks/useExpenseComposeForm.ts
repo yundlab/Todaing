@@ -33,10 +33,15 @@ export function useExpenseComposeForm() {
   const [exInstallmentMonths, setExInstallmentMonths] = useState(2);
   const [exInstallmentNoInterest, setExInstallmentNoInterest] = useState(false);
 
-  /** 결제일과 다른 사용 예정/실제일 토글 */
+  /** 「+ 다른 날 사용」블록 표시 */
   const [plannedAtEnabled, setPlannedAtEnabled] = useState(false);
-  /** datetime-local 입력값 (예: "2026-05-12T19:30"). 빈 문자열이면 미입력. */
-  const [plannedAtLocal, setPlannedAtLocal] = useState("");
+  const [plannedUsageDayKey, setPlannedUsageDayKey] = useState("");
+  const [plannedUsageStartText, setPlannedUsageStartText] = useState("");
+  const [plannedUsageEndText, setPlannedUsageEndText] = useState("");
+  const [plannedUsageTitle, setPlannedUsageTitle] = useState("");
+  const [plannedUsageContent, setPlannedUsageContent] = useState("");
+  const [plannedUsageDetail, setPlannedUsageDetail] = useState("");
+  const [plannedUsageCompanionsText, setPlannedUsageCompanionsText] = useState("");
 
   /** 작성 완료/취소 후 폼 리셋 */
   function reset() {
@@ -59,7 +64,13 @@ export function useExpenseComposeForm() {
     setExInstallmentMonths(2);
     setExInstallmentNoInterest(false);
     setPlannedAtEnabled(false);
-    setPlannedAtLocal("");
+    setPlannedUsageDayKey("");
+    setPlannedUsageStartText("");
+    setPlannedUsageEndText("");
+    setPlannedUsageTitle("");
+    setPlannedUsageContent("");
+    setPlannedUsageDetail("");
+    setPlannedUsageCompanionsText("");
   }
 
   return {
@@ -105,8 +116,20 @@ export function useExpenseComposeForm() {
 
     plannedAtEnabled,
     setPlannedAtEnabled,
-    plannedAtLocal,
-    setPlannedAtLocal,
+    plannedUsageDayKey,
+    setPlannedUsageDayKey,
+    plannedUsageStartText,
+    setPlannedUsageStartText,
+    plannedUsageEndText,
+    setPlannedUsageEndText,
+    plannedUsageTitle,
+    setPlannedUsageTitle,
+    plannedUsageContent,
+    setPlannedUsageContent,
+    plannedUsageDetail,
+    setPlannedUsageDetail,
+    plannedUsageCompanionsText,
+    setPlannedUsageCompanionsText,
 
     reset
   };

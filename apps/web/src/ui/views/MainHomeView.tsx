@@ -11,12 +11,12 @@ import {
 import { tintForCategory } from "@/domain/categoryTint";
 import { stripTransitRoutePrefix } from "@/domain/expenseTransitText";
 import { parseScheduleNote } from "@/domain/scheduleNote";
-import { expenseTimeLabel, timeRangeLabel, yyyyMmLocal } from "@/domain/date";
+import { expenseTimeLabel, timeRangeLabel, yyyyMmDdLocal, yyyyMmLocal } from "@/domain/date";
 import { PAYMENT_TYPE_LABEL, chipClass } from "@/domain/expensePaymentUi";
 import {
-  companionsExcludingPayerLabel,
   formatWon,
   participantsCount,
+  participantsDisplayWithoutMe,
   settlementLineForExpense
 } from "@/domain/settlement";
 import { monthIndexDiff } from "@/domain/monthKeyDiff";
@@ -285,6 +285,8 @@ export default function MainHomeView(props: MainHomeViewProps) {
               const expenseTransitIcon =
                 normalizeCategory(e.category) === "교통2"
                   ? (() => {
+                      const fromSegment = (it.usageTransitMode ?? "").trim();
+                      if (fromSegment) return fromSegment;
                       const direct = (e.transitMode ?? "").trim();
                       if (direct) return direct;
                       const seg = e.transitSegments;
@@ -294,6 +296,19 @@ export default function MainHomeView(props: MainHomeViewProps) {
                       return m || null;
                     })()
                   : null;
+              const plannedUsageCard =
+                normalizeCategory(e.category) !== "교통2" &&
+                e.plannedAt &&
+                yyyyMmDdLocal(new Date(e.plannedAt)) !== yyyyMmDdLocal(new Date(e.occurredAt));
+              const pm = (e.plannedMemo ?? "").trim();
+              const pc = (e.plannedContent ?? "").trim();
+              const plannedTitle = pc ? pm : "";
+              const usageCardMainTitle =
+                plannedUsageCard
+                  ? (plannedTitle.trim() || (e.subject ?? "").trim() || it.label)
+                  : it.label;
+              /** 실사용「내용」만 회색 박스(라벨 없음). `plannedContent`가 있을 때만 표시. */
+              const usageGrayBody = plannedUsageCard && pc.trim() ? pc.trim() : "";
               return (
                 <li key={`u-${e.id}-${it.startMs}`}>
                   <ExpenseCard
@@ -301,7 +316,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                     leftIcon={
                       <div
                         className={cn(
-                          "mt-0.5 inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-2xl opacity-70",
+                          "mt-0.5 inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-2xl",
                           tint.border,
                           tint.bg
                         )}
@@ -309,12 +324,10 @@ export default function MainHomeView(props: MainHomeViewProps) {
                         {expenseTransitIcon ?? emojiForCategory(e.category || "기타")}
                       </div>
                     }
-                    title={
-                      <span className="inline-flex items-center gap-2">
-                        <span>{it.label}</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-                          이용
-                        </span>
+                    title={plannedUsageCard ? usageCardMainTitle : it.label}
+                    chips={
+                      <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold leading-none text-slate-500">
+                        이용
                       </span>
                     }
                     meta={
@@ -324,10 +337,14 @@ export default function MainHomeView(props: MainHomeViewProps) {
                       </span>
                     }
                     quote={
-                      it.usageMemo ? (
-                        <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
-                          <span className="text-slate-500">이용일 메모</span>
-                          <span className="text-slate-400"> · </span>
+                      plannedUsageCard ? (
+                        usageGrayBody ? (
+                          <div className="ml-[3.75rem] w-[calc(100%-3.75rem)] min-w-0 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
+                            <span className="break-words [word-break:keep-all]">“{usageGrayBody}”</span>
+                          </div>
+                        ) : null
+                      ) : it.usageMemo ? (
+                        <div className="ml-[3.75rem] w-[calc(100%-3.75rem)] min-w-0 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
                           <span className="break-words">“{it.usageMemo}”</span>
                         </div>
                       ) : null
@@ -375,22 +392,28 @@ export default function MainHomeView(props: MainHomeViewProps) {
               normalizeCategory(e.category) === "교통2" && isUsageDayDifferent(e, dayKey)
                 ? stripTransitRoutePrefix(rawMemoText, e.transitFrom, e.transitTo).trim()
                 : rawMemoText;
-            const transit1BusNumber = (() => {
+            /** 교통1 카드 하단: 구간마다 버스번호·지하철 노선을 순서대로 표시 */
+            const transit1LineSummary = (() => {
               if (normalizeCategory(e.category) !== "교통1") return "";
               const seg = e.transitSegments;
               if (!Array.isArray(seg) || !seg.length) return "";
-              for (const s of seg as any[]) {
+              const parts: string[] = [];
+              for (const s of seg as { mode?: string; busNumber?: string; line?: string }[]) {
                 const mode = typeof s?.mode === "string" ? String(s.mode).trim().toUpperCase() : "";
-                if (mode !== "BUS") continue;
-                const bn = typeof s?.busNumber === "string" ? s.busNumber.trim() : "";
-                if (bn) return bn;
+                if (mode === "BUS") {
+                  const bn = typeof s?.busNumber === "string" ? s.busNumber.trim() : "";
+                  if (bn) parts.push(`🚌 ${bn}`);
+                } else if (mode === "SUBWAY") {
+                  const line = typeof s?.line === "string" ? s.line.trim() : "";
+                  if (line) parts.push(`🚃 ${line}`);
+                }
               }
-              return "";
+              return parts.join(" · ");
             })();
             const memoTextWithBus =
-              normalizeCategory(e.category) === "교통1" && transit1BusNumber ? `🚌 ${transit1BusNumber}` : memoText;
+              normalizeCategory(e.category) === "교통1" ? transit1LineSummary || memoText : memoText;
             const payerLabel = (e.paymentOwner ?? "").trim() || "—";
-            const companionsLine = companionsExcludingPayerLabel(e).trim();
+            const companionsLine = participantsDisplayWithoutMe(e.participants, "나").trim();
             const isCardPayment = e.paymentType === "CARD";
             const isCardInstallment =
               isCardPayment &&
@@ -440,7 +463,42 @@ export default function MainHomeView(props: MainHomeViewProps) {
                           const route = from && to ? `${from} → ${to}` : (from || to);
                           return route || (e.merchant ?? normalizeCategory(e.category));
                         })()
-                      : (e.merchant ?? normalizeCategory(e.category))
+                      : normalizeCategory(e.category) === "교통2"
+                        ? (() => {
+                            const merchantLine =
+                              (e.merchant ?? "").trim() || normalizeCategory(e.category);
+                            const subj = (e.subject ?? "").trim();
+                            return (
+                              <div className="min-w-0 text-left">
+                                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                  결제처
+                                </div>
+                                <div className="mt-0.5 break-words text-base font-semibold leading-snug text-slate-900">
+                                  {merchantLine}
+                                </div>
+                                {subj ? (
+                                  <div className="mt-1 break-words text-sm font-semibold text-slate-700">{subj}</div>
+                                ) : null}
+                              </div>
+                            );
+                          })()
+                        : (
+                          <div className="min-w-0 space-y-1 text-left">
+                            {(e.subject ?? "").trim() ? (
+                              <div className="break-words text-base font-semibold leading-snug text-slate-900">
+                                {(e.subject ?? "").trim()}
+                              </div>
+                            ) : null}
+                            <div
+                              className={cn(
+                                "break-words font-semibold leading-snug text-slate-900",
+                                (e.subject ?? "").trim() ? "text-sm" : "text-base"
+                              )}
+                            >
+                              {(e.merchant ?? "").trim() || normalizeCategory(e.category)}
+                            </div>
+                          </div>
+                        )
                   }
                   chips={
                     <>
@@ -466,12 +524,11 @@ export default function MainHomeView(props: MainHomeViewProps) {
                       {String(e.id || "").includes("::cashflow::") ? (
                         <span
                           className={cn(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tabular-nums",
                             chipClass("orange")
                           )}
                         >
-                          할부(
-                          {installmentNth ?? "?"}/{originalForCashflow.installmentMonths ?? "?"})
+                          할부 {installmentNth ?? "?"}/{originalForCashflow.installmentMonths ?? "?"}
                         </span>
                       ) : null}
                     </>
@@ -551,7 +608,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                       <>
                         <div className="min-w-0 flex-1">
                           {memoTextWithBus ? (
-                            <div className="ml-[calc(3rem+0.75rem)] truncate rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
+                            <div className="ml-[calc(3rem+0.75rem)] min-w-0 break-words rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
                               “{memoTextWithBus}”
                             </div>
                           ) : null}

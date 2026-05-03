@@ -25,7 +25,7 @@ export default function ExpenseCard(props: {
       }}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 gap-3">
+        <div className="flex min-w-0 flex-1 gap-3">
           {props.leftIcon}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -39,12 +39,12 @@ export default function ExpenseCard(props: {
                 {props.meta}
               </div>
             ) : null}
-            {props.quote ? <div className="mt-2">{props.quote}</div> : null}
           </div>
         </div>
 
         <div className="shrink-0 text-right">{props.amount}</div>
       </div>
+      {props.quote ? <div className="mt-2 w-full min-w-0">{props.quote}</div> : null}
       {props.settlement ? (
         <div className="mt-2 flex w-full min-w-0 items-center justify-between gap-2">{props.settlement}</div>
       ) : null}

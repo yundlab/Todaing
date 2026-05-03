@@ -17,11 +17,11 @@ export default function Transit2Fields({
   return (
     <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold text-slate-600">교통2 (기차/버스/택시/비행기)</div>
-      <div className="mt-3 space-y-3">
+      <div className="mt-2 space-y-2">
         {segments.map((seg, idx) => (
-          <div key={idx} className="rounded-2xl border border-slate-200 bg-white px-3 pb-3 pt-2 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold text-slate-600">구간 {idx + 1}</div>
+          <div key={idx} className="rounded-2xl border border-slate-200 bg-white px-3 pb-3 pt-3 shadow-sm">
+            <div className="flex min-h-9 items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-slate-500">{`구간${idx + 1}`}</div>
               {segments.length > 1 ? (
                 <button
                   type="button"
@@ -40,15 +40,16 @@ export default function Transit2Fields({
                   <button
                     type="button"
                     key={m}
-                    className={`flex flex-1 items-center justify-center rounded-xl border py-3 text-xl font-semibold leading-none transition-colors ${
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-semibold transition-colors",
                       seg.mode === m
                         ? "border-indigo-600 bg-indigo-600 text-white shadow-sm hover:bg-indigo-600"
-                        : "border-slate-200 bg-white text-slate-900 hover:bg-white hover:text-indigo-600"
-                    }`}
+                        : "border-slate-200 bg-white text-slate-800 hover:bg-white hover:text-indigo-600"
+                    )}
                     onClick={() => setSegments(segments.map((s, i) => (i === idx ? { ...s, mode: m } : s)))}
                     aria-label={`교통수단 ${m}`}
                   >
-                    {m}
+                    <span className="text-base leading-none">{m}</span>
                   </button>
                 ))}
               </div>
@@ -134,21 +135,21 @@ export default function Transit2Fields({
             </div>
           </div>
         ))}
-
-        <button
-          type="button"
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-800 shadow-sm"
-          onClick={() => {
-            const baseDay = segments[segments.length - 1]?.dayKey ?? yyyyMmDdLocal(new Date());
-            setSegments([
-              ...segments,
-              { dayKey: baseDay, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
-            ]);
-          }}
-        >
-          + 구간 추가(출국/입국)
-        </button>
       </div>
+
+      <button
+        type="button"
+        className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-800 shadow-sm"
+        onClick={() => {
+          const baseDay = segments[segments.length - 1]?.dayKey ?? yyyyMmDdLocal(new Date());
+          setSegments([
+            ...segments,
+            { dayKey: baseDay, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
+          ]);
+        }}
+      >
+        + 구간 추가(출국/입국)
+      </button>
     </div>
   );
 }
