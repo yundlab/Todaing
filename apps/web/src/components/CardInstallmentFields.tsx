@@ -1,4 +1,5 @@
-import { cn } from "./cn";
+import { cn } from "@/components/cn";
+import { fieldBorderClass } from "@/components/inputFieldClasses";
 
 const INSTALLMENT_MONTH_OPTIONS = Array.from({ length: 35 }, (_, i) => i + 2);
 
@@ -50,7 +51,10 @@ export default function CardInstallmentFields(props: {
               <select
                 value={props.months}
                 onChange={(e) => props.setMonths(Number(e.target.value))}
-                className="w-full min-w-0 cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white px-3 py-3 pr-10 text-sm font-semibold outline-none focus:border-slate-400"
+                className={cn(
+                  "w-full min-w-0 cursor-pointer appearance-none rounded-xl bg-white px-3 py-3 pr-10 text-sm font-semibold",
+                  fieldBorderClass({ required: true })
+                )}
               >
                 {INSTALLMENT_MONTH_OPTIONS.map((m) => (
                   <option key={m} value={m}>

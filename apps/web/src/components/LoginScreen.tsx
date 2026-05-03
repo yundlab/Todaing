@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { config } from "../lib/config";
-import { safeParseJwtPayload, type AuthUser } from "../lib/auth";
-import TodaingLogoMark from "./TodaingLogoMark";
+import { config } from "@/lib/config";
+import { safeParseJwtPayload, type AuthUser } from "@/lib/auth";
+import TodaingLogoMark from "@/components/TodaingLogoMark";
 
 declare global {
   // eslint-disable-next-line no-unused-vars

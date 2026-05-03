@@ -1,6 +1,6 @@
-import { cn } from "./cn";
-import { parseEmojiPrefixedTitle } from "../domain/categoryUi";
-import { parseScheduleNote } from "../domain/scheduleNote";
+import { cn } from "@/components/cn";
+import { parseEmojiPrefixedTitle } from "@/domain/categoryUi";
+import { parseScheduleNote } from "@/domain/scheduleNote";
 
 export default function ScheduleDetailNoteBlock(props: {
   title: string;

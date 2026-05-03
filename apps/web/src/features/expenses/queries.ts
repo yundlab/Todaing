@@ -7,7 +7,7 @@ import {
   listExpenses,
   updateExpense,
   type ExpenseListResponse
-} from "./api";
+} from "@/features/expenses/api";
 
 const EXPENSE_QUERY_KEYS = [
   ["expenses"],

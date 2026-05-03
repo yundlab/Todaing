@@ -1,5 +1,5 @@
-import { cn } from "./cn";
-import type { AggregateMode } from "../domain/installment";
+import { cn } from "@/components/cn";
+import type { AggregateMode } from "@/domain/installment";
 
 export default function AggregateModeToggle({
   mode,

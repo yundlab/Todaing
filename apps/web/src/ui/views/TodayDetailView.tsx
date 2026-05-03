@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import type { Expense } from "../features/expenses/api";
-import type { ScheduleItem } from "../features/schedules/api";
-import { CATEGORY_GROUPS, emojiForCategory, normalizeCategory, parseEmojiPrefixedTitle } from "../domain/categoryUi";
-import { timeRangeLabel } from "../domain/date";
-import { parseScheduleNote } from "../domain/scheduleNote";
-import { formatWon } from "../domain/settlement";
-import SettlementRow from "../components/SettlementRow";
+import type { Expense } from "@/features/expenses/api";
+import type { ScheduleItem } from "@/features/schedules/api";
+import { CATEGORY_GROUPS, emojiForCategory, normalizeCategory, parseEmojiPrefixedTitle } from "@/domain/categoryUi";
+import { timeRangeLabel } from "@/domain/date";
+import { parseScheduleNote } from "@/domain/scheduleNote";
+import { formatWon } from "@/domain/settlement";
+import SettlementRow from "@/components/SettlementRow";
+import { UsersIcon } from "@/components/icons/index";
 
 function ClockIcon({ className }: { className?: string }) {
   return (
@@ -21,24 +22,6 @@ function ClockIcon({ className }: { className?: string }) {
     >
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v6l4 2" />
-    </svg>
-  );
-}
-
-function UserIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M20 21a8 8 0 10-16 0" />
-      <circle cx="12" cy="7" r="4" />
     </svg>
   );
 }
@@ -269,7 +252,7 @@ export function TodayDetailView({
                           <>
                             <span className="shrink-0">·</span>
                             <span className="inline-flex min-w-0 max-w-full items-start gap-1">
-                              <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+                              <UsersIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
                               <span className="min-w-0 break-words normal-case">{s.peopleText}</span>
                             </span>
                           </>

@@ -1,15 +1,15 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import MainPage from "../pages/MainPage";
-import TodayDetailPage from "../pages/TodayDetailPage";
-import MonthDetailPage from "../pages/MonthDetailPage";
-import CalendarPage from "../pages/CalendarPage";
-import SettingsPage from "../pages/SettingsPage";
+import Main from "@/routes/Main";
+import TodayDetail from "@/routes/TodayDetail";
+import MonthDetail from "@/routes/MonthDetail";
+import Calendar from "@/routes/Calendar";
+import Settings from "@/routes/Settings";
 
 export const router = createBrowserRouter([
-  { path: "/", element: <MainPage /> },
-  { path: "/today/:day", element: <TodayDetailPage /> },
-  { path: "/month/:month", element: <MonthDetailPage /> },
-  { path: "/calendar/:month", element: <CalendarPage /> },
-  { path: "/settings", element: <SettingsPage /> },
+  { path: "/", element: <Main /> },
+  { path: "/today/:day", element: <TodayDetail /> },
+  { path: "/month/:month", element: <MonthDetail /> },
+  { path: "/calendar/:month", element: <Calendar /> },
+  { path: "/settings", element: <Settings /> },
   { path: "*", element: <Navigate to="/" replace /> }
 ]);

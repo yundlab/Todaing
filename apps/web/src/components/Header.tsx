@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import { Link } from "react-router-dom";
-import TodaingLogoMark from "./TodaingLogoMark";
+import TodaingLogoMark from "@/components/TodaingLogoMark";
 
 export default function Header(props: {
   dayKey: string;

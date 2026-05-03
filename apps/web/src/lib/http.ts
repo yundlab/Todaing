@@ -1,4 +1,4 @@
-import { config } from "./config";
+import { config } from "@/lib/config";
 
 export class HttpError extends Error {
   readonly status: number;
@@ -25,7 +25,14 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new HttpError(res.status, text || res.statusText);
+    let msg = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j?.error === "string" && j.error.trim()) msg = j.error.trim();
+    } catch {
+      void 0;
+    }
+    throw new HttpError(res.status, msg);
   }
 
   // 204 No Content

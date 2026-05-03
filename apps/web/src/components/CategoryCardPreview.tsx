@@ -1,6 +1,6 @@
-import { cn } from "./cn";
-import { emojiForCategory, normalizeCategory } from "../domain/categoryUi";
-import { tintForCategory } from "../domain/categoryTint";
+import { cn } from "@/components/cn";
+import { emojiForCategory, normalizeCategory } from "@/domain/categoryUi";
+import { tintForCategory } from "@/domain/categoryTint";
 
 /** 타임라인 카드 왼쪽과 동일 — 배경·테두리·이모지 */
 export default function CategoryCardPreview({ category }: { category: string }) {

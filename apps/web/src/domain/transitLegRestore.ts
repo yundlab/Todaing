@@ -1,14 +1,16 @@
-import type { TransitLeg } from "./transitPayload";
-import { STATIONS } from "../features/transit/stations";
-import { formatAmountInputWithCommas, parseAmountInput } from "./parseAmountInput";
+import type { TransitLeg } from "@/domain/transitPayload";
+import { getCapitalMetroStationsSync } from "@/features/transit/stations";
+import { formatAmountInputWithCommas, parseAmountInput } from "@/domain/parseAmountInput";
 
 function stationFromPersistedName(name: string | null | undefined) {
+  const all = getCapitalMetroStationsSync();
+  if (!all) return null;
   const n = String(name ?? "").trim();
   if (!n) return null;
-  const hits = STATIONS.filter((s) => s.name === n);
+  const hits = all.filter((s) => s.name === n);
   if (hits.length === 1) return hits[0]!;
   if (hits.length > 1) return [...hits].sort((a, b) => a.name.localeCompare(b.name, "ko"))[0]!;
-  const partial = STATIONS.filter((s) => s.name.includes(n));
+  const partial = all.filter((s) => s.name.includes(n));
   return partial.length ? partial.sort((a, b) => a.name.localeCompare(b.name, "ko"))[0]! : null;
 }
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Expense } from "../features/expenses/api";
+import type { Expense } from "@/features/expenses/api";
 
 const DEFAULT_START = "";
 const DEFAULT_END = "";
@@ -27,6 +27,8 @@ export function useExpenseComposeForm() {
   const [payerOther, setPayerOther] = useState("");
   const [expenseScope, setExpenseScope] = useState<"PERSONAL" | "SHARED">("PERSONAL");
   const [sharedNamesText, setSharedNamesText] = useState("");
+  /** 개인 지출: 동행·함께 쓴 사람 (선택, 결제자와 별도 저장) */
+  const [expenseCompanionsText, setExpenseCompanionsText] = useState("");
   const [exInstallment, setExInstallment] = useState(false);
   const [exInstallmentMonths, setExInstallmentMonths] = useState(2);
   const [exInstallmentNoInterest, setExInstallmentNoInterest] = useState(false);
@@ -52,6 +54,7 @@ export function useExpenseComposeForm() {
     setPayerOther("");
     setExpenseScope("PERSONAL");
     setSharedNamesText("");
+    setExpenseCompanionsText("");
     setExInstallment(false);
     setExInstallmentMonths(2);
     setExInstallmentNoInterest(false);
@@ -90,6 +93,8 @@ export function useExpenseComposeForm() {
     setExpenseScope,
     sharedNamesText,
     setSharedNamesText,
+    expenseCompanionsText,
+    setExpenseCompanionsText,
 
     exInstallment,
     setExInstallment,

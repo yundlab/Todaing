@@ -1,6 +1,6 @@
-import type { Expense } from "../features/expenses/api";
-import { yyyyMmDdLocal, yyyyMmLocal } from "./date";
-import { myShareAmountForMe } from "./settlement";
+import type { Expense } from "@/features/expenses/api";
+import { yyyyMmDdLocal, yyyyMmLocal } from "@/domain/date";
+import { myShareAmountForMe } from "@/domain/settlement";
 
 export type AggregateMode = "usage" | "cashflow";
 
@@ -132,24 +132,6 @@ export function sumExpensesForMonthToDate(
         sum += a.amount;
       }
     }
-  }
-  return sum;
-}
-
-/** 일별 합계: 사용액 모드는 결제일에 전액, 실출금 모드도 일 단위는 “결제일 표기” 유지(통장 출금일 별도 모델 없음) */
-export function sumExpensesForDay(
-  _mode: AggregateMode,
-  expenses: Expense[],
-  dayKey: string,
-  opts?: { onlyMine?: boolean; me?: string }
-): number {
-  const me = opts?.me ?? "나";
-  const onlyMine = !!opts?.onlyMine;
-  let sum = 0;
-  for (const e of expenses) {
-    const d = new Date(e.occurredAt);
-    if (yyyyMmDdLocal(d) !== dayKey) continue;
-    sum += onlyMine ? myShareAmountForMe(e, me) : Number(e.amount) || 0;
   }
   return sum;
 }

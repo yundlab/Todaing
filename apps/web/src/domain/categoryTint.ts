@@ -1,4 +1,4 @@
-import { normalizeCategory } from "./categoryUi";
+import { normalizeCategory } from "@/domain/categoryUi";
 
 export type CategoryTint = { bg: string; border: string; text: string };
 

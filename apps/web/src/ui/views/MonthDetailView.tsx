@@ -1,21 +1,21 @@
 import type { ReactNode } from "react";
-import type { Expense } from "../features/expenses/api";
-import type { ScheduleItem } from "../features/schedules/api";
-import { yyyyMmDdLocal, yyyyMmLocal } from "../domain/date";
+import type { Expense } from "@/features/expenses/api";
+import type { ScheduleItem } from "@/features/schedules/api";
+import { yyyyMmDdLocal, yyyyMmLocal } from "@/domain/date";
 import {
   CATEGORY_GROUPS,
   emojiForCategory,
   GROUP_LABEL_STYLE,
   normalizeCategory
-} from "../domain/categoryUi";
-import { formatWon, myShareAmountForMe } from "../domain/settlement";
+} from "@/domain/categoryUi";
+import { formatWon, myShareAmountForMe } from "@/domain/settlement";
 import {
   expenseCashflowAllocations,
   expenseCashflowAllocationsForMe,
   sumExpensesForMonth,
   type AggregateMode
-} from "../domain/installment";
-import SettlementRow from "../components/SettlementRow";
+} from "@/domain/installment";
+import SettlementRow from "@/components/SettlementRow";
 
 export type MonthDetailViewProps = {
   header: ReactNode;
