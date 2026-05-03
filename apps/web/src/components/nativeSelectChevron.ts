@@ -1,4 +1,6 @@
 import type { CSSProperties } from "react";
+import { cn } from "@/components/cn";
+import { fieldBorderClass } from "@/components/inputFieldClasses";
 
 /**
  * 네이티브 <select> 기본 화살표 제거 + 카테고리 드롭다운과 동일한 slate-400 chevron.
@@ -16,5 +18,9 @@ export const NATIVE_SELECT_CHEVRON_STYLE: CSSProperties = {
   backgroundSize: "1.125rem 1.125rem"
 };
 
-export const NATIVE_SELECT_CHEVRON_CLASS =
-  "min-w-0 cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-3 pl-3 pr-12 text-sm text-slate-900 outline-none focus:border-slate-400";
+const NATIVE_SELECT_CHEVRON_BASE =
+  "min-w-0 cursor-pointer appearance-none rounded-xl bg-white py-3 pl-3 pr-12 text-sm text-slate-900";
+
+export const NATIVE_SELECT_CHEVRON_CLASS = cn(NATIVE_SELECT_CHEVRON_BASE, fieldBorderClass());
+
+export const NATIVE_SELECT_CHEVRON_CLASS_REQUIRED = cn(NATIVE_SELECT_CHEVRON_BASE, fieldBorderClass({ required: true }));

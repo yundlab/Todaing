@@ -1,4 +1,18 @@
-import type { Station } from "../features/transit/stations";
+import type { Station } from "@/features/transit/stations";
+import { parseAmountInput } from "@/domain/parseAmountInput";
+
+/** 새 교통1 구간·초기 시트 기본 — 지하철보다 버스를 먼저 쓰는 경우가 많아 버스로 둡니다. */
+export function emptyTransit1Leg(): TransitLeg {
+  return {
+    mode: "BUS",
+    start: "",
+    end: "",
+    busNumber: "",
+    from: "",
+    to: "",
+    amount: ""
+  };
+}
 
 export type TransitLeg =
   | {
@@ -8,6 +22,8 @@ export type TransitLeg =
       busNumber: string;
       from: string;
       to: string;
+      /** 금액 입력(콤마 허용) — 저장 시 숫자로 직렬화 */
+      amount: string;
     }
   | {
       mode: "SUBWAY";
@@ -16,6 +32,8 @@ export type TransitLeg =
       from: Station | null;
       to: Station | null;
       line: string;
+      /** 금액 입력(콤마 허용) — 저장 시 숫자로 직렬화 */
+      amount: string;
     };
 
 export type TransitPayload = {
@@ -55,7 +73,11 @@ function legToSegment(leg: TransitLeg) {
       end: leg.end,
       busNumber: leg.busNumber || null,
       from: leg.from || null,
-      to: leg.to || null
+      to: leg.to || null,
+      amount: (() => {
+        const parsed = parseAmountInput(String(leg.amount ?? ""));
+        return parsed == null ? null : parsed;
+      })()
     };
   }
   return {
@@ -64,7 +86,11 @@ function legToSegment(leg: TransitLeg) {
     end: leg.end,
     from: leg.from?.name ?? null,
     to: leg.to?.name ?? null,
-    line: leg.line || null
+    line: leg.line || null,
+    amount: (() => {
+      const parsed = parseAmountInput(String(leg.amount ?? ""));
+      return parsed == null ? null : parsed;
+    })()
   };
 }
 

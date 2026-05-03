@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { yyyyMmLocal } from "../domain/date";
+import { yyyyMmLocal } from "@/domain/date";
 import {
   effectiveMonthlyBudgetWon,
   MONTHLY_BUDGET_BY_YM_LS_KEY,
   parseMonthlyBudgetByYm,
   readLegacyMonthlyBudgetWonFromStorage,
   serializeMonthlyBudgetByYm
-} from "../domain/monthlyBudgetStorage";
-import BottomNav from "../components/BottomNav";
-import DateMonthInput from "../components/DateMonthInput";
-import { parseAmountInput } from "../domain/parseAmountInput";
-import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { AUTH_USER_LS_KEY } from "../lib/auth";
+} from "@/domain/monthlyBudgetStorage";
+import BottomNav from "@/components/BottomNav";
+import DateMonthInput from "@/components/DateMonthInput";
+import { cn } from "@/components/cn";
+import { fieldBorderClass } from "@/components/inputFieldClasses";
+import { parseAmountInput } from "@/domain/parseAmountInput";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import { AUTH_USER_LS_KEY } from "@/lib/auth";
 
-export default function SettingsPage() {
+export default function SettingsView() {
   const navigate = useNavigate();
   const [hasAuth] = useState(() => {
     try {
@@ -125,7 +127,7 @@ export default function SettingsPage() {
                   const v = e.target.value;
                   if (v) setEditMonthYm(v);
                 }}
-                className="font-mono text-base font-semibold tabular-nums text-slate-900 focus:border-indigo-400"
+                className="font-mono text-base font-semibold tabular-nums text-slate-900"
               />
             </div>
             <label className="block">
@@ -166,7 +168,10 @@ export default function SettingsPage() {
                   setBudgetByYm((prev) => ({ ...prev, [editMonthYm]: parsed }));
                   setBudgetDraft(parsed.toLocaleString("ko-KR"));
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-right font-mono text-base font-semibold tabular-nums tracking-tight text-slate-900 outline-none focus:border-slate-400"
+                className={cn(
+                  "w-full rounded-xl bg-white px-3 py-3 text-right font-mono text-base font-semibold tabular-nums tracking-tight text-slate-900",
+                  fieldBorderClass()
+                )}
               />
             </label>
             <p className="mt-3 text-xs text-slate-500">

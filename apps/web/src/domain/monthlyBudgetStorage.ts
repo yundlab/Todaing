@@ -5,11 +5,6 @@ export const MONTHLY_BUDGET_BY_YM_LS_KEY = "monthlyBudgetWonByYm";
 
 export const DEFAULT_MONTHLY_BUDGET_WON = 10_000_000;
 
-export function parseStoredMonthlyBudgetWon(raw: string): number {
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_MONTHLY_BUDGET_WON;
-}
-
 /** 기존 단일 예산 키. 없거나 잘못된 값이면 null */
 export function readLegacyMonthlyBudgetWonFromStorage(): number | null {
   try {

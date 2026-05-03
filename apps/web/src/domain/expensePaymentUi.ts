@@ -1,4 +1,4 @@
-import type { Expense } from "../features/expenses/api";
+import type { Expense } from "@/features/expenses/api";
 
 export const PAYMENT_TYPE_LABEL: Record<Expense["paymentType"], string> = {
   CARD: "카드",

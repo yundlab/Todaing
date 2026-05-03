@@ -1,7 +1,9 @@
-import type { Transit2SegmentDraft } from "../../domain/transitPayload";
-import { yyyyMmDdLocal } from "../../domain/date";
-import { normalizeFourDigitTimeInput } from "../../domain/time";
-import DateMonthInput from "../DateMonthInput";
+import type { Transit2SegmentDraft } from "@/domain/transitPayload";
+import { yyyyMmDdLocal } from "@/domain/date";
+import { normalizeFourDigitTimeInput } from "@/domain/time";
+import DateMonthInput from "@/components/DateMonthInput";
+import { cn } from "@/components/cn";
+import { fieldBorderClass } from "@/components/inputFieldClasses";
 
 export default function Transit2Fields({
   segments,
@@ -10,8 +12,7 @@ export default function Transit2Fields({
   segments: Transit2SegmentDraft[];
   setSegments: (_next: Transit2SegmentDraft[]) => void;
 }) {
-  const fieldClass =
-    "w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400";
+  const fieldClass = cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass());
 
   return (
     <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -54,7 +55,7 @@ export default function Transit2Fields({
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-3">
-              <label className="col-span-2">
+              <label className="col-span-2 flex w-full min-w-0 max-w-full flex-col">
                 <div className="mb-1 text-xs text-slate-400">사용일</div>
                 <DateMonthInput
                   type="date"
@@ -64,7 +65,7 @@ export default function Transit2Fields({
                     if (!v) return;
                     setSegments(segments.map((s, i) => (i === idx ? { ...s, dayKey: v } : s)));
                   }}
-                  className="h-12 text-sm"
+                  className="h-12 w-full min-w-0 text-sm"
                 />
               </label>
               <label className="min-w-0">

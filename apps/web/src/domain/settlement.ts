@@ -1,4 +1,4 @@
-import type { Expense } from "../features/expenses/api";
+import type { Expense } from "@/features/expenses/api";
 
 export function formatWon(amount: number) {
   return `${amount.toLocaleString()}원`;
@@ -26,6 +26,15 @@ export function participantsDisplayWithoutMe(participants: unknown, me = "나"):
   const names = participants.map((x) => String(x).trim()).filter(Boolean);
   const rest = names.filter((n) => n !== me);
   return rest.length ? rest.join(", ") : names.join(", ");
+}
+
+/** 결제자 제외 동행·N분의1 정산 멤버 표기 (개인 지출의 선택 동행은 결제자 미포함 배열로 저장) */
+export function companionsExcludingPayerLabel(e: Expense): string {
+  const payer = (e.paymentOwner ?? "").trim();
+  if (!Array.isArray(e.participants) || e.participants.length === 0) return "";
+  const names = e.participants.map((x) => String(x).trim()).filter(Boolean);
+  if (!payer) return names.join(", ");
+  return names.filter((n) => n !== payer).join(", ");
 }
 
 export function myShareAmountForMe(e: Expense, me: string) {

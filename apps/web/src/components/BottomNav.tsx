@@ -1,6 +1,6 @@
 import { NavLink, useLocation, useMatch, useSearchParams } from "react-router-dom";
-import { yyyyMmDdLocal, yyyyMmLocal } from "../domain/date";
-import { cn } from "./cn";
+import { yyyyMmDdLocal, yyyyMmLocal } from "@/domain/date";
+import { cn } from "@/components/cn";
 
 function HomeIcon({ className }: { className?: string }) {
   return (

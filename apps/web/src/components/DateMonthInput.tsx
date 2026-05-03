@@ -1,8 +1,6 @@
 import { forwardRef, type ComponentPropsWithoutRef } from "react";
-
-function cn(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
+import { cn } from "@/components/cn";
+import { fieldBorderClass } from "@/components/inputFieldClasses";
 
 export function CalendarIcon({ className }: { className?: string }) {
   return (
@@ -29,18 +27,21 @@ export const calendarPickerIndicatorOverlayClasses =
 
 type DateMonthInputProps = ComponentPropsWithoutRef<"input"> & {
   iconAlign?: "right" | "center";
+  /** 라벨에 (필수)가 붙은 날짜/달 입력 — 기본 테두리만 진한 회색 */
+  required?: boolean;
 };
 
 const DateMonthInput = forwardRef<HTMLInputElement, DateMonthInputProps>(
-  function DateMonthInput({ className, iconAlign = "right", ...props }, ref) {
+  function DateMonthInput({ className, iconAlign = "right", required: requiredField, ...props }, ref) {
     const isCenter = iconAlign === "center";
     return (
-      <div className="group relative min-w-0">
+      <div className="group relative flex w-full min-w-0 max-w-full">
         <input
           ref={ref}
           {...props}
           className={cn(
-            "box-border w-full min-w-0 rounded-xl border border-slate-200 bg-white py-3 align-middle leading-normal outline-none transition-colors focus:border-slate-400 group-hover:border-indigo-300",
+            "box-border min-h-12 w-full min-w-0 flex-1 rounded-xl bg-white py-3 align-middle leading-normal transition-colors group-hover:border-indigo-300",
+            fieldBorderClass({ required: requiredField }),
             isCenter ? "px-3 text-center" : "pl-3 pr-12",
             calendarPickerIndicatorOverlayClasses,
             className
