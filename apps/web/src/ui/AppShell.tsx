@@ -28,7 +28,7 @@ import Transit2Fields from "../components/transit/Transit2Fields";
 import BottomNav from "../components/BottomNav";
 import ComposeSheet from "../components/ComposeSheet";
 import CardInstallmentFields from "../components/CardInstallmentFields";
-import { ClockIcon, UserIcon, MoneyIcon } from "../components/icons";
+import { ClockIcon, UserIcon, MoneyIcon, WalletIcon, UsersIcon } from "../components/icons";
 import DateMonthInput from "../components/DateMonthInput";
 import { NATIVE_SELECT_CHEVRON_CLASS, NATIVE_SELECT_CHEVRON_STYLE } from "../components/nativeSelectChevron";
 import ExpenseCard from "../components/ExpenseCard";
@@ -46,7 +46,7 @@ import {
   yyyyMmLocal
 } from "../domain/date";
 import { normalizeFourDigitTimeInput, parseFlexibleTimeToMinutes } from "../domain/time";
-import { parseScheduleNote } from "../domain/scheduleNote";
+import { encodeScheduleNote, parseScheduleNote } from "../domain/scheduleNote";
 import {
   effectiveMonthlyBudgetWon,
   MONTHLY_BUDGET_BY_YM_LS_KEY,
@@ -57,8 +57,8 @@ import {
 import {
   formatWon,
   myShareAmountForMe,
+  companionsExcludingPayerLabel,
   participantsCount,
-  participantsDisplayWithoutMe,
   settlementDeltaForMe,
   settlementLineForExpense,
   settlementTransfersForMe
@@ -80,289 +80,25 @@ import {
 } from "../domain/installment";
 import { MonthDetailView } from "../pages/MonthDetailView";
 import { TodayDetailView } from "../pages/TodayDetailView";
-
-type Tint = { bg: string; border: string; text: string };
-
-function formatAmountInputWithCommas(raw: string) {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  const digits = trimmed.replaceAll(",", "").replaceAll(" ", "").replace(/[^\d]/g, "");
-  if (!digits) return "";
-  const n = Number(digits);
-  if (!Number.isFinite(n)) return "";
-  return Math.trunc(n).toLocaleString();
-}
-
-function stripTransitRoutePrefix(detail: string, transitFrom: string | null, transitTo: string | null) {
-  const d = (detail ?? "").trim();
-  if (!d) return detail;
-  const from = (transitFrom ?? "").trim();
-  const to = (transitTo ?? "").trim();
-  const route = from && to ? `${from} → ${to}` : "";
-  if (!route) return detail;
-  const prefix1 = `${route} · `;
-  const prefix2 = `${route}·`;
-  if (d.startsWith(prefix1)) return d.slice(prefix1.length);
-  if (d.startsWith(prefix2)) return d.slice(prefix2.length);
-  return detail;
-}
-
-function isUsageDayDifferent(e: Expense, currentDayKey: string) {
-  if (!e.plannedAt) return false;
-  const plannedDay = yyyyMmDdLocal(new Date(e.plannedAt));
-  return plannedDay !== currentDayKey;
-}
-
-const GROUP_TINT: Record<"fixed" | "food" | "optionalFixed" | "living" | "other", Tint> = {
-  // 1) 교통1, 교통2, 통신, 보험
-  fixed: { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-900" },
-  // 2) 식비, 간식 (식음료 = 연한 주황)
-  food: { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-900" },
-  // 3) 선택 고정비 - 담배, 구독 (연한 노랑)
-  optionalFixed: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-900" },
-  // 4) 생활, 병원, 선물
-  living: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-900" },
-  other: { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-900" }
-};
-
-// 카테고리 개별 색상 우선 적용
-const CATEGORY_TINT_OVERRIDE: Record<string, Tint> = {
-  // 생활/병원/선물: 연한 청록색으로 통일
-  생활: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-900" },
-  병원: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-900" },
-  선물: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-900" },
-  // god: 하늘색
-  god: { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-900" },
-  // PPTNZ: 초록색
-  PPTNZ: { bg: "bg-green-50", border: "border-green-200", text: "text-green-900" },
-  // 안재현: 검정 계열
-  안재현: { bg: "bg-slate-900", border: "border-slate-900", text: "text-white" },
-  // 덕질/영화/뮤지컬: 검정 계열
-  덕질: { bg: "bg-slate-900", border: "border-slate-900", text: "text-white" },
-  영화: { bg: "bg-slate-900", border: "border-slate-900", text: "text-white" },
-  뮤지컬: { bg: "bg-slate-900", border: "border-slate-900", text: "text-white" },
-  "공연/전시": { bg: "bg-slate-900", border: "border-slate-900", text: "text-white" }
-};
-
-function groupForCategory(category: string) {
-  if (["교통1", "교통2", "통신", "보험"].includes(category)) return "fixed";
-  if (["식사", "간식"].includes(category)) return "food";
-  if (["담배", "구독"].includes(category)) return "optionalFixed";
-  if (["생활", "병원", "선물"].includes(category)) return "living";
-  return "other";
-}
-
-function tintForCategory(category: string): Tint {
-  const c = normalizeCategory(category);
-  return CATEGORY_TINT_OVERRIDE[c] ?? GROUP_TINT[groupForCategory(c)];
-}
-
-/** 타임라인 카드 왼쪽과 동일 — 배경·테두리·이모지 */
-function CategoryCardPreview({ category }: { category: string }) {
-  const c = normalizeCategory(category);
-  const tint = tintForCategory(c);
-  return (
-    <div
-      className={cn(
-        "inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-2xl",
-        tint.border,
-        tint.bg
-      )}
-      aria-hidden
-    >
-      {emojiForCategory(c)}
-    </div>
-  );
-}
+import { formatAmountInputWithCommas, parseAmountInput } from "../domain/parseAmountInput";
+import { cn } from "../components/cn";
+import CategoryCardPreview from "../components/CategoryCardPreview";
+import ScheduleDetailNoteBlock from "../components/ScheduleDetailNoteBlock";
+import AggregateModeToggle from "../components/AggregateModeToggle";
+import { tintForCategory } from "../domain/categoryTint";
+import { stripTransitRoutePrefix } from "../domain/expenseTransitText";
+import { transitSegmentToLeg, transit1LegsWithAmountFallback } from "../domain/transitLegRestore";
+import { PAYMENT_TYPE_LABEL, PAYMENT_TYPE_OPTIONS, chipClass, clamp01 } from "../domain/expensePaymentUi";
+import { formatCalendarWon } from "../domain/calendarSpendFormat";
+import { expensesOccurringWithinSchedule } from "../domain/scheduleExpenseLink";
+import { parseMainDayQuery } from "../domain/mainDayQuery";
+import { monthIndexDiff } from "../domain/monthKeyDiff";
+import type { TimelineItem } from "../domain/timelineTypes";
+import { isUsageDayDifferent } from "../domain/expenseDayUsage";
 
 /** 네이티브 select 화살표는 오른쪽에 붙어 보이므로 제거 후 여백 있는 커스텀 화살표 사용 */
 const CATEGORY_SELECT_CLASS = cn("flex-1", NATIVE_SELECT_CHEVRON_CLASS);
 const CATEGORY_SELECT_ARROW_STYLE = NATIVE_SELECT_CHEVRON_STYLE;
-
-const PAYMENT_TYPE_LABEL: Record<Expense["paymentType"], string> = {
-  CARD: "카드",
-  CASH: "현금",
-  ACCOUNT: "계좌",
-  ETC: "기타"
-};
-
-const PAYMENT_TYPE_OPTIONS: Array<{ key: Expense["paymentType"]; label: string }> = [
-  { key: "CARD", label: "카드" },
-  { key: "CASH", label: "현금" },
-  { key: "ACCOUNT", label: "이체" },
-  { key: "ETC", label: "기타" }
-];
-
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
-
-function chipClass(variant: "gray" | "orange" | "teal") {
-  if (variant === "orange") return "bg-orange-50 text-orange-700 border-orange-100";
-  if (variant === "teal") return "bg-indigo-50 text-indigo-700 border-indigo-100";
-  return "bg-slate-100 text-slate-600 border-slate-200";
-}
-
-function monthIndexDiff(fromMonthKey: string, toMonthKey: string) {
-  // YYYY-MM
-  const fy = Number(fromMonthKey.slice(0, 4));
-  const fm = Number(fromMonthKey.slice(5, 7));
-  const ty = Number(toMonthKey.slice(0, 4));
-  const tm = Number(toMonthKey.slice(5, 7));
-  if (!Number.isFinite(fy) || !Number.isFinite(fm) || !Number.isFinite(ty) || !Number.isFinite(tm)) return 0;
-  return (ty - fy) * 12 + (tm - fm);
-}
-
-
-function cn(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
-
-function ScheduleDetailNoteBlock(props: { title: string; note: string | null }) {
-  const parsedTitle = parseEmojiPrefixedTitle(props.title);
-  const titleText = parsedTitle.content || props.title;
-  const n = parseScheduleNote(props.note);
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-      <div>
-        <div className="text-xs text-slate-400">제목</div>
-        <div className="mt-1 break-words font-semibold text-slate-900">{titleText}</div>
-      </div>
-      <div className="mt-3">
-        <div className="text-xs text-slate-400">내용</div>
-        <div className="mt-1 break-words text-slate-800">{n.memo?.trim() ? n.memo : "—"}</div>
-      </div>
-      <div className="mt-3">
-        <div className="text-xs text-slate-400">세부 내용</div>
-        <div className="mt-1 break-words text-slate-800">{n.detail?.trim() ? n.detail : "—"}</div>
-      </div>
-    </div>
-  );
-}
-
-
-function AggregateModeToggle({
-  mode,
-  onChange,
-  size = "sm"
-}: {
-  mode: AggregateMode;
-   
-  onChange: (_next: AggregateMode) => void;
-  size?: "sm" | "xs";
-}) {
-  const padding = size === "xs" ? "px-2 py-0.5" : "px-2.5 py-1";
-  const text = size === "xs" ? "text-[10px]" : "text-[11px]";
-  return (
-    <div
-      className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 p-0.5"
-      role="tablist"
-      aria-label="합계 기준"
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={mode === "usage"}
-        className={cn(
-          "rounded-full font-semibold tabular-nums tracking-tight transition",
-          padding,
-          text,
-          mode === "usage"
-            ? "bg-white text-slate-900 shadow-sm"
-            : "text-slate-500 hover:text-slate-700"
-        )}
-        onClick={() => onChange("usage")}
-      >
-        사용액
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={mode === "cashflow"}
-        className={cn(
-          "rounded-full font-semibold tabular-nums tracking-tight transition",
-          padding,
-          text,
-          mode === "cashflow"
-            ? "bg-white text-slate-900 shadow-sm"
-            : "text-slate-500 hover:text-slate-700"
-        )}
-        onClick={() => onChange("cashflow")}
-      >
-        실출금
-      </button>
-    </div>
-  );
-}
-
-function formatCalendarWon(n: number) {
-  const v = Math.round(Number(n) || 0);
-  if (!Number.isFinite(v) || v === 0) return "";
-  const abs = Math.abs(v);
-  // Compact for narrow calendar cells
-  if (abs >= 1_000_000) {
-    const x = Math.round((v / 10_000) * 10) / 10; // 만원 단위, 소수 1자리
-    return `${x}만`;
-  }
-  if (abs >= 100_000) {
-    const x = Math.round((v / 10_000) * 10) / 10; // 54.8만
-    return `${x}만`;
-  }
-  return v.toLocaleString();
-}
-
-type TimelineItem =
-  | {
-      kind: "schedule";
-      startMs: number;
-      id: string;
-      startAt: string;
-      endAt: string | null;
-      title: string;
-      note: string | null;
-      linkedExpenseSum: number;
-    }
-  | {
-      kind: "expense";
-      startMs: number;
-      expense: Expense;
-    }
-  | {
-      kind: "usage-expense";
-      startMs: number;
-      expense: Expense;
-      label: string;
-      startText: string;
-      endText: string;
-      usageMemo: string;
-    };
-
-/** 일정 시작~끝 구간 안에 occurredAt이 들어오는 지출 (일정+비용 동시 기록 등). 끝 시간 없으면 해당 날 23:59:59까지. */
-function expensesOccurringWithinSchedule(expenses: Expense[], schedule: ScheduleItem): Expense[] {
-  const s0 = new Date(schedule.startAt).getTime();
-  if (!Number.isFinite(s0)) return [];
-  let s1: number;
-  if (schedule.endAt) {
-    s1 = new Date(schedule.endAt).getTime();
-  } else {
-    const dayEnd = new Date(schedule.startAt);
-    dayEnd.setHours(23, 59, 59, 999);
-    s1 = dayEnd.getTime();
-  }
-  if (!Number.isFinite(s1) || s0 > s1) return [];
-  return expenses.filter((e) => {
-    const t = new Date(e.occurredAt).getTime();
-    return Number.isFinite(t) && t >= s0 && t <= s1;
-  });
-}
-
-function parseMainDayQuery(raw: string | null): Date | null {
-  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const d = new Date(`${raw}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 export default function App({ view }: { view: "main" | "today" | "month" | "calendar" }) {
   const navigate = useNavigate();
@@ -675,6 +411,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
   const [schedulePayTimeText, setSchedulePayTimeText] = useState("");
   const [schedulePeopleText, setSchedulePeopleText] = useState("");
   const [scheduleShowOnCalendar, setScheduleShowOnCalendar] = useState(false);
+  const [scheduleCancelled, setScheduleCancelled] = useState(false);
   const [scheduleExpenseTitle, setScheduleExpenseTitle] = useState("");
 
   const [expenseDetailOpen, setExpenseDetailOpen] = useState<Expense | null>(null);
@@ -709,6 +446,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     setExpenseScope,
     sharedNamesText,
     setSharedNamesText,
+    expenseCompanionsText,
+    setExpenseCompanionsText,
     exInstallment,
     setExInstallment,
     exInstallmentMonths,
@@ -732,7 +471,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
 
   // 교통1 (대중교통) - 다구간(환승) 지원
   const [transitLegs, setTransitLegs] = useState<TransitLeg[]>(() => [
-    { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
+    { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }
   ]);
 
   const handleComposeClose = useCallback(() => {
@@ -746,11 +485,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     setSchedulePayTimeText("");
     setSchedulePeopleText("");
     setScheduleShowOnCalendar(false);
+    setScheduleCancelled(false);
     setExTransitMode("🚆");
     setExTransitFromText("");
     setExTransitToText("");
     setTransit2SegmentsDraft([{ dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }]);
-    setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }]);
+    setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }]);
     resetComposeForm();
   }, [resetComposeForm, dayKey]);
 
@@ -884,9 +624,19 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     setPayerPreset(owner === "나" ? "나" : "기타");
     setPayerOther(owner === "나" ? "" : owner);
     setExpenseScope(base.scope ?? "PERSONAL");
-    setSharedNamesText(
-      Array.isArray(base.participants) ? (base.participants as unknown[]).map(String).join(", ") : ""
-    );
+    if (base.scope === "SHARED") {
+      setSharedNamesText(
+        Array.isArray(base.participants) ? (base.participants as unknown[]).map(String).join(", ") : ""
+      );
+      setExpenseCompanionsText("");
+    } else {
+      setSharedNamesText("");
+      setExpenseCompanionsText(
+        Array.isArray(base.participants) && base.participants.length
+          ? (base.participants as unknown[]).map(String).join(", ")
+          : ""
+      );
+    }
 
     // plannedAt 복원: occurredAt과 다를 때만 토글 ON, datetime-local 입력값 채움
     if (base.plannedAt) {
@@ -914,54 +664,29 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
       const seg = base.transitSegments;
       if (Array.isArray(seg) && seg.length) {
         setTransitLegs(() => {
-          const mapped = seg
-            .map((s) => {
-              if (!s || typeof s !== "object") return null;
-              const anyS: Record<string, unknown> = s as Record<string, unknown>;
-              if (anyS.mode === "BUS") {
-                return {
-                  mode: "BUS" as const,
-                  start: String(anyS.start ?? ""),
-                  end: String(anyS.end ?? ""),
-                  busNumber: String(anyS.busNumber ?? ""),
-                  from: String(anyS.from ?? ""),
-                  to: String(anyS.to ?? "")
-                };
-              }
-              if (anyS.mode === "SUBWAY") {
-                return {
-                  mode: "SUBWAY" as const,
-                  start: String(anyS.start ?? ""),
-                  end: String(anyS.end ?? ""),
-                  from: null,
-                  to: null,
-                  line: String(anyS.line ?? "")
-                };
-              }
-              return null;
-            })
-            .filter(Boolean) as TransitLeg[];
-          return mapped.length
+          const mapped = seg.map(transitSegmentToLeg).filter((x): x is TransitLeg => x != null);
+          const legs: TransitLeg[] = mapped.length
             ? mapped
-            : [
-                {
-                  mode: "SUBWAY",
-                  start: "",
-                  end: "",
-                  from: null,
-                  to: null,
-                  line: ""
-                }
-              ];
+            : [{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }];
+          return transit1LegsWithAmountFallback(legs, base.amount);
         });
       } else {
         setTransitLegs([
-          { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
+          {
+            mode: "SUBWAY",
+            start: "",
+            end: "",
+            from: null,
+            to: null,
+            line: "",
+            amount:
+              base.amount > 0 ? formatAmountInputWithCommas(String(base.amount)) : ""
+          }
         ]);
       }
     } else {
       setTransitLegs([
-        { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
+        { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }
       ]);
     }
     if (normalizeCategory(base.category) === "교통2") {
@@ -1034,6 +759,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     setEntryTitle(parsed.content);
     const np = parseScheduleNote(full.note);
     setSchedulePeopleText(np.people.join(", "));
+    setScheduleCancelled(Boolean(np.cancelled));
     const stripTransit2Line = (raw: string) =>
       raw
         .split("\n")
@@ -1059,56 +785,25 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     setPayerOther("");
     setExpenseScope("PERSONAL");
     setSharedNamesText("");
+    setExpenseCompanionsText("");
     setExInstallment(false);
     setExInstallmentMonths(2);
     setExInstallmentNoInterest(false);
 
+    const trExTransit1 = linked.find((x) => normalizeCategory(x.category) === "교통1");
     if (parsed.category === "교통1") {
-      const trEx = linked.find((x) => normalizeCategory(x.category) === "교통1");
-      const seg = trEx?.transitSegments;
+      const seg = trExTransit1?.transitSegments;
       if (Array.isArray(seg) && seg.length) {
         setTransitLegs(() => {
-          const mapped = seg
-            .map((el) => {
-              if (!el || typeof el !== "object") return null;
-              const anyS: Record<string, unknown> = el as Record<string, unknown>;
-              if (anyS.mode === "BUS") {
-                return {
-                  mode: "BUS" as const,
-                  start: String(anyS.start ?? ""),
-                  end: String(anyS.end ?? ""),
-                  busNumber: String(anyS.busNumber ?? ""),
-                  from: String(anyS.from ?? ""),
-                  to: String(anyS.to ?? "")
-                };
-              }
-              if (anyS.mode === "SUBWAY") {
-                return {
-                  mode: "SUBWAY" as const,
-                  start: String(anyS.start ?? ""),
-                  end: String(anyS.end ?? ""),
-                  from: null,
-                  to: null,
-                  line: String(anyS.line ?? "")
-                };
-              }
-              return null;
-            })
-            .filter(Boolean) as TransitLeg[];
-          return mapped.length
+          const mapped = seg.map(transitSegmentToLeg).filter((x): x is TransitLeg => x != null);
+          const legs: TransitLeg[] = mapped.length
             ? mapped
-            : [
-                {
-                  mode: "SUBWAY" as const,
-                  start: "",
-                  end: "",
-                  from: null,
-                  to: null,
-                  line: ""
-                }
-              ];
+            : [{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }];
+          const totalWon = typeof trExTransit1?.amount === "number" ? trExTransit1.amount : 0;
+          return transit1LegsWithAmountFallback(legs, totalWon);
         });
       } else {
+        const amt = typeof trExTransit1?.amount === "number" ? trExTransit1.amount : 0;
         setTransitLegs([
           {
             mode: "SUBWAY",
@@ -1116,13 +811,17 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             end: "",
             from: null,
             to: null,
-            line: ""
+            line: "",
+            amount: amt > 0 ? formatAmountInputWithCommas(String(amt)) : ""
           }
         ]);
       }
+      if (trExTransit1 && typeof trExTransit1.amount === "number") {
+        setExAmount(formatAmountInputWithCommas(String(trExTransit1.amount)));
+      }
     } else {
       setTransitLegs([
-        { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }
+        { mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }
       ]);
     }
     const scheduleDayKey = yyyyMmDdLocal(new Date(full.startAt));
@@ -1416,6 +1115,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     payerOther,
     expenseScope,
     sharedNamesText,
+    expenseCompanionsText,
     exInstallment,
     exInstallmentMonths,
     exInstallmentNoInterest,
@@ -1426,6 +1126,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
     scheduleExpenseTitle,
     scheduleWithExpense,
     scheduleShowOnCalendar,
+    scheduleCancelled,
     transit2SegmentsDraft,
     composeDayLocal00,
     composeEditExpenseId,
@@ -1840,6 +1541,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             <div className="mt-4 rounded-3xl border border-indigo-200/70 bg-slate-50/70 p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold text-slate-500">이번달 예산 현황</div>
+                <div className="text-xs font-semibold text-slate-700">{budgetUi.monthPctText}%</div>
               </div>
               <div className="mt-2 h-2 w-full rounded-full bg-white">
                 <div
@@ -1901,6 +1603,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 const cat = normalizeCategory(parsedTitle.category);
                 const tint = tintForCategory(cat);
                 const schedNote = parseScheduleNote(it.note);
+                const isCancelled = Boolean(schedNote.cancelled);
                 const scheduleTransitIcon =
                   cat === "교통2"
                     ? (() => {
@@ -1913,7 +1616,10 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 return (
                   <li key={`s-${it.id}`}>
                     <button
-                      className="w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:brightness-[0.99]"
+                      className={cn(
+                        "w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:brightness-[0.99]",
+                        isCancelled ? "bg-slate-50/40" : ""
+                      )}
                       onClick={() => {
                         const full = (scheduleData?.items ?? []).find((s) => s.id === it.id);
                         if (!full) return;
@@ -1932,10 +1638,20 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                             {scheduleTransitIcon ?? emojiForCategory(cat)}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="break-words text-left text-base font-semibold leading-snug text-slate-900">
+                            <div
+                              className={cn(
+                                "break-words text-left text-base font-semibold leading-snug",
+                                isCancelled ? "text-slate-400" : "text-slate-900"
+                              )}
+                            >
                               {parsedTitle.content || it.title}
                             </div>
-                            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-400">
+                            <div
+                              className={cn(
+                                "mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold",
+                                isCancelled ? "text-slate-300" : "text-slate-400"
+                              )}
+                            >
                               <span className="inline-flex shrink-0 items-center gap-1">
                                 <ClockIcon className="h-4 w-4 text-slate-300" />
                                 <span className="tabular-nums">
@@ -1957,7 +1673,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                           </div>
                         </div>
                         <div className="shrink-0 text-right">
-                          <div className="text-xs font-semibold text-slate-400">기록</div>
+                          <div className="text-xs font-semibold text-slate-400">일정</div>
                         </div>
                       </div>
                       {schedNote.memo ? (
@@ -2069,6 +1785,20 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 normalizeCategory(e.category) === "교통2" && isUsageDayDifferent(e, dayKey)
                   ? stripTransitRoutePrefix(rawMemoText, e.transitFrom, e.transitTo).trim()
                   : rawMemoText;
+              const transit1BusNumber = (() => {
+                if (normalizeCategory(e.category) !== "교통1") return "";
+                const seg = e.transitSegments;
+                if (!Array.isArray(seg) || !seg.length) return "";
+                for (const s of seg as any[]) {
+                  const mode = typeof s?.mode === "string" ? String(s.mode).trim().toUpperCase() : "";
+                  if (mode !== "BUS") continue;
+                  const bn = typeof s?.busNumber === "string" ? s.busNumber.trim() : "";
+                  if (bn) return bn;
+                }
+                return "";
+              })();
+              const memoTextWithBus =
+                normalizeCategory(e.category) === "교통1" && transit1BusNumber ? `🚌 ${transit1BusNumber}` : memoText;
               const expenseTransitIcon =
                 normalizeCategory(e.category) === "교통2"
                   ? (() => {
@@ -2081,10 +1811,8 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                       return m || null;
                     })()
                   : null;
-              const peopleLabel =
-                e.scope === "SHARED" && Array.isArray(e.participants) && e.participants.length
-                  ? participantsDisplayWithoutMe(e.participants, "나")
-                  : (e.paymentOwner ?? "-");
+              const payerLabel = (e.paymentOwner ?? "").trim() || "—";
+              const companionsLine = companionsExcludingPayerLabel(e).trim();
               const installmentShort =
                 e.paymentType === "CARD" && e.installment && e.installmentMonths
                   ? e.installmentNoInterest
@@ -2109,7 +1837,16 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         {expenseTransitIcon ?? emojiForCategory(e.category)}
                       </div>
                     }
-                    title={e.merchant ?? normalizeCategory(e.category)}
+                    title={
+                      normalizeCategory(e.category) === "교통1"
+                        ? (() => {
+                            const from = (e.transitFrom ?? "").trim();
+                            const to = (e.transitTo ?? "").trim();
+                            const route = from && to ? `${from} → ${to}` : (from || to);
+                            return route || (e.merchant ?? normalizeCategory(e.category));
+                          })()
+                        : (e.merchant ?? normalizeCategory(e.category))
+                    }
                     chips={
                       <>
                         {e.scope === "SHARED" ? (
@@ -2164,9 +1901,18 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         </span>
                         <span className="shrink-0">·</span>
                         <span className="inline-flex min-w-0 max-w-full items-start gap-1">
-                          <UserIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
-                          <span className="min-w-0 break-words">{peopleLabel}</span>
+                          <WalletIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600/90" aria-hidden />
+                          <span className="min-w-0 break-words">{payerLabel}</span>
                         </span>
+                        {companionsLine ? (
+                          <>
+                            <span className="shrink-0">·</span>
+                            <span className="inline-flex min-w-0 max-w-full items-start gap-1">
+                              <UsersIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                              <span className="min-w-0 break-words">{companionsLine}</span>
+                            </span>
+                          </>
+                        ) : null}
                         <span className="shrink-0">·</span>
                         <span className="inline-flex min-w-0 max-w-full items-start gap-1">
                           <MoneyIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
@@ -2199,12 +1945,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                       )
                     }
                     settlement={
-                      memoText || settlementLine ? (
+                      memoTextWithBus || settlementLine ? (
                         <>
                           <div className="min-w-0 flex-1">
-                            {memoText ? (
+                            {memoTextWithBus ? (
                               <div className="ml-[calc(3rem+0.75rem)] truncate rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
-                                “{memoText}”
+                                “{memoTextWithBus}”
                               </div>
                             ) : null}
                           </div>
@@ -2253,7 +1999,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               setSchedulePayTimeText("");
               setSchedulePeopleText("");
               resetComposeForm();
-              setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }]);
+              setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }]);
               setTransit2SegmentsDraft([
                 { dayKey, start: "", end: "", fromText: "", toText: "", mode: "🚆", memoText: "" }
               ]);
@@ -2423,8 +2169,13 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                     일정
                   </button>
                 </div>
-                <div className="col-span-2 grid grid-cols-2 gap-3">
-                  <label className={cn("min-w-0", isTransit1 && "col-span-2")}>
+                <div className="col-span-2 grid min-w-0 grid-cols-2 gap-3">
+                  <label
+                    className={cn(
+                      "flex min-w-0 w-full max-w-full flex-col",
+                      isTransit1 && "col-span-2"
+                    )}
+                  >
                     <div className="mb-1 text-xs text-slate-400">날짜(필수)</div>
                     <DateMonthInput
                       type="date"
@@ -2434,12 +2185,12 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         if (!v) return;
                         setComposeDayKey(v);
                       }}
-                      className="h-12 text-sm"
+                      className="h-12 w-full min-w-0 text-sm"
                     />
                   </label>
                   {!isTransit1 ? (
                     isTransit2 ? (
-                      <label className="min-w-0">
+                      <label className="flex min-w-0 w-full max-w-full flex-col">
                         <div className="mb-1 text-xs text-slate-400">시간(필수)</div>
                         <input
                           value={entryStartText}
@@ -2451,7 +2202,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         />
                       </label>
                     ) : composeKind === "schedule" ? (
-                      <div className="min-w-0">
+                      <div className="min-w-0 w-full max-w-full">
                         <div className="mb-1 text-xs text-slate-400">&nbsp;</div>
                         <button
                           type="button"
@@ -2478,7 +2229,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         </button>
                       </div>
                     ) : composeKind === "expense" ? (
-                    <div className="min-w-0">
+                    <div className="min-w-0 w-full max-w-full">
                       <div className="mb-1 text-xs text-slate-400 opacity-0 select-none">&nbsp;</div>
                       <button
                         type="button"
@@ -2656,7 +2407,7 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         const prev = entryCategory.trim();
                         const nextCat = v.trim();
                         if (nextCat === "교통1" && prev !== "교통1") {
-                          setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "" }]);
+                          setTransitLegs([{ mode: "SUBWAY", start: "", end: "", from: null, to: null, line: "", amount: "" }]);
                         }
                         if (nextCat === "교통2" && prev !== "교통2") {
                           setEntryStartText("");
@@ -2728,15 +2479,17 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         />
                       </label>
                     ) : null}
-                    <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
-                      <input
-                        value={entryTitle}
-                        onChange={(e) => setEntryTitle(e.target.value)}
-                        placeholder="예: 교통 이동시간 / 영화 / 헬스 / 오늘 뭐했는지"
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
-                      />
-                    </label>
+                    {!isTransit1 ? (
+                      <label className="col-span-2">
+                        <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
+                        <input
+                          value={entryTitle}
+                          onChange={(e) => setEntryTitle(e.target.value)}
+                          placeholder="예: 교통 이동시간 / 영화 / 헬스 / 오늘 뭐했는지"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                        />
+                      </label>
+                    ) : null}
                     <label className="col-span-2">
                       <div className="mb-1 text-xs text-slate-400">세부 내용</div>
                       <input
@@ -2746,16 +2499,18 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                       />
                     </label>
-                    <label className="col-span-2">
-                      <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
-                      <input
-                        inputMode="numeric"
-                        value={exAmount}
-                        onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
-                        placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
-                      />
-                    </label>
+                    {!isTransit1 ? (
+                      <label className="col-span-2">
+                        <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
+                        <input
+                          inputMode="numeric"
+                          value={exAmount}
+                          onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
+                          placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
+                        />
+                      </label>
+                    ) : null}
                   </>
                 ) : (
                   <>
@@ -2861,19 +2616,24 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                             />
                           </label>
-                          <label className="block">
-                            <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
-                            <input
-                              inputMode="numeric"
-                              value={exAmount}
-                              onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
-                              placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
-                            />
-                          </label>
+                          {!isTransit1 ? (
+                            <label className="block">
+                              <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
+                              <input
+                                inputMode="numeric"
+                                value={exAmount}
+                                onChange={(e) => setExAmount(formatAmountInputWithCommas(e.target.value))}
+                                placeholder={isTransitCategory ? "예: 교통비" : "예: 12000"}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none focus:border-slate-400"
+                              />
+                            </label>
+                          ) : null}
                           <div className="grid grid-cols-2 gap-2">
                             <div className="min-w-0 space-y-2">
-                              <div className="mb-1 text-xs text-slate-400">결제자(필수)</div>
+                              <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+                                <WalletIcon className="h-3.5 w-3.5 shrink-0 text-amber-600/90" aria-hidden />
+                                결제자(필수)
+                              </div>
                               <div className="flex gap-2">
                                 {(["나", "기타"] as const).map((p) => (
                                   <button
@@ -2916,7 +2676,11 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                                         ? "border-indigo-600 bg-indigo-600 text-white"
                                         : "border-slate-200 bg-white text-slate-800"
                                     )}
-                                    onClick={() => setExpenseScope(t.key)}
+                                    onClick={() => {
+                                      setExpenseScope(t.key);
+                                      if (t.key === "SHARED") setExpenseCompanionsText("");
+                                      else setSharedNamesText("");
+                                    }}
                                   >
                                     {t.label}
                                   </button>
@@ -2926,12 +2690,26 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                                 <input
                                   value={sharedNamesText}
                                   onChange={(e) => setSharedNamesText(e.target.value)}
-                                  placeholder="함께한 사람 (쉼표로 구분)"
+                                  placeholder="나눔 인원 (필수) · 예: 나,철수,영희"
                                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                                 />
                               ) : null}
                             </div>
                           </div>
+                          {expenseScope === "PERSONAL" ? (
+                            <label className="block">
+                              <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+                                <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                                함께한 사람 (선택)
+                              </div>
+                              <input
+                                value={expenseCompanionsText}
+                                onChange={(e) => setExpenseCompanionsText(e.target.value)}
+                                placeholder="쉼표로 구분 예: 철수, 영희"
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                              />
+                            </label>
+                          ) : null}
                           <div className="space-y-2">
                             <div className="mb-1 text-xs text-slate-400">결제 수단(필수)</div>
                             <div className="flex flex-wrap gap-2">
@@ -2994,7 +2772,10 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   <>
                     <div className="col-span-2 grid grid-cols-2 gap-2">
                       <div className="min-w-0 space-y-2">
-                        <div className="mb-1 text-xs text-slate-400">결제자(필수)</div>
+                        <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+                          <WalletIcon className="h-3.5 w-3.5 shrink-0 text-amber-600/90" aria-hidden />
+                          결제자(필수)
+                        </div>
                         <div className="flex gap-2">
                           {(["나", "기타"] as const).map((p) => (
                             <button
@@ -3038,7 +2819,11 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                                   ? "border-indigo-600 bg-indigo-600 text-white"
                                   : "border-slate-200 bg-white text-slate-800"
                               )}
-                              onClick={() => setExpenseScope(t.key)}
+                              onClick={() => {
+                                setExpenseScope(t.key);
+                                if (t.key === "SHARED") setExpenseCompanionsText("");
+                                else setSharedNamesText("");
+                              }}
                             >
                               {t.label}
                             </button>
@@ -3048,12 +2833,27 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                           <input
                             value={sharedNamesText}
                             onChange={(e) => setSharedNamesText(e.target.value)}
-                            placeholder="함께한 사람 (쉼표로 구분) 예: 나,철수,영희"
+                            placeholder="나눔 인원 (필수) · 예: 나,철수,영희"
                             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
                           />
                         ) : null}
                       </div>
                     </div>
+
+                    {expenseScope === "PERSONAL" ? (
+                      <label className="col-span-2">
+                        <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+                          <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                          함께한 사람 (선택)
+                        </div>
+                        <input
+                          value={expenseCompanionsText}
+                          onChange={(e) => setExpenseCompanionsText(e.target.value)}
+                          placeholder="쉼표로 구분 예: 철수, 영희"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400"
+                        />
+                      </label>
+                    ) : null}
 
                     <div className="col-span-2 space-y-2">
                       <div className="mb-1 text-xs text-slate-400">결제 수단(필수)</div>
@@ -3243,7 +3043,10 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                 <div className="mt-1 font-semibold text-slate-900">{PAYMENT_TYPE_LABEL[expenseDetailOpen.paymentType]}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-400">결제자</div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <WalletIcon className="h-3.5 w-3.5 shrink-0 text-amber-600/90" aria-hidden />
+                  결제자
+                </div>
                 <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.paymentOwner ?? "-"}</div>
               </div>
               <div>
@@ -3262,12 +3065,92 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
                   </div>
                 </div>
               ) : null}
-              <div className="col-span-2">
-                <div className="text-xs text-slate-400">결제처</div>
-                <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.merchant ?? "-"}</div>
-              </div>
+              {normalizeCategory(expenseDetailOpen.category) !== "교통1" ? (
+                <div className="col-span-2">
+                  <div className="text-xs text-slate-400">결제처</div>
+                  <div className="mt-1 font-semibold text-slate-900">{expenseDetailOpen.merchant ?? "-"}</div>
+                </div>
+              ) : null}
             </div>
-            {(() => {
+            {normalizeCategory(expenseDetailOpen.category) === "교통1" ? (
+              (() => {
+                const transit1BusNumber = (() => {
+                  const seg = expenseDetailOpen.transitSegments;
+                  if (!Array.isArray(seg) || !seg.length) return "";
+                  for (const s of seg as any[]) {
+                    const mode = typeof s?.mode === "string" ? String(s.mode).trim().toUpperCase() : "";
+                    if (mode !== "BUS") continue;
+                    const bn = typeof s?.busNumber === "string" ? s.busNumber.trim() : "";
+                    if (bn) return bn;
+                  }
+                  return "";
+                })();
+                const from = (expenseDetailOpen.transitFrom ?? "?").trim() || "?";
+                const to = (expenseDetailOpen.transitTo ?? "?").trim() || "?";
+                return (
+                  <>
+                    <div className="mt-3">
+                      <div className="text-xs text-slate-400">이동</div>
+                      <div className="mt-1 font-semibold text-slate-900">{`🚌 ${from} → ${to}`}</div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-xs text-slate-400">NO.</div>
+                      <div className="mt-1 font-semibold text-slate-900">{transit1BusNumber || "-"}</div>
+                    </div>
+                    {(() => {
+                      const seg = expenseDetailOpen.transitSegments;
+                      if (!Array.isArray(seg) || !seg.length) return null;
+                      return (
+                        <div className="mt-3">
+                          <div className="text-xs text-slate-400">구간별 금액</div>
+                          <ul className="mt-2 space-y-2">
+                            {(seg as unknown[]).map((raw, i) => {
+                              if (!raw || typeof raw !== "object") return null;
+                              const o = raw as Record<string, unknown>;
+                              const mode = typeof o.mode === "string" ? o.mode.toUpperCase() : "";
+                              const label = i === 0 ? "구간 1" : `환승 ${i}`;
+                              const amtRaw = o.amount;
+                              const amt =
+                                typeof amtRaw === "number" && Number.isFinite(amtRaw)
+                                  ? Math.trunc(amtRaw)
+                                  : parseAmountInput(String(amtRaw ?? ""));
+                              let route = "";
+                              if (mode === "BUS") {
+                                route = `${String(o.from ?? "").trim() || "?"} → ${String(o.to ?? "").trim() || "?"}`;
+                              } else if (mode === "SUBWAY") {
+                                route = `${String(o.from ?? "").trim() || "?"} → ${String(o.to ?? "").trim() || "?"}`;
+                                const line = String(o.line ?? "").trim();
+                                if (line) route += ` · ${line}`;
+                              } else {
+                                route = "—";
+                              }
+                              return (
+                                <li
+                                  key={i}
+                                  className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm text-slate-800"
+                                >
+                                  <div className="text-xs font-semibold text-slate-500">{label}</div>
+                                  <div className="mt-0.5 font-medium text-slate-800">{route}</div>
+                                  <div className="mt-1 text-sm font-bold tabular-nums text-indigo-700">
+                                    {amt != null && amt > 0 ? formatWon(amt) : "—"}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      );
+                    })()}
+                    <div className="mt-3">
+                      <div className="text-xs text-slate-400">세부 내용</div>
+                      <div className="mt-1 text-slate-800">{(expenseDetailOpen.detail ?? "").trim() || "-"}</div>
+                    </div>
+                  </>
+                );
+              })()
+            ) : null}
+            {normalizeCategory(expenseDetailOpen.category) !== "교통1" &&
+            (() => {
               const hideTransitBecauseUsageDay =
                 normalizeCategory(expenseDetailOpen.category) === "교통2" &&
                 expenseDetailOpen.plannedAt &&
@@ -3277,23 +3160,49 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               <div className="mt-3">
                 <div className="text-xs text-slate-400">이동</div>
                 <div className="mt-1 font-semibold text-slate-900">
-                  {(expenseDetailOpen.transitMode ?? "") + " "}
-                  {(expenseDetailOpen.transitFrom ?? "?") +
-                    (expenseDetailOpen.transitVia ? ` → ${expenseDetailOpen.transitVia.split("|").join(" → ")}` : "") +
-                    " → " +
-                    (expenseDetailOpen.transitTo ?? "?")}
-                  {expenseDetailOpen.transitLine ? ` · ${expenseDetailOpen.transitLine}` : ""}
-                  {expenseDetailOpen.transitBusNumber ? ` · ${expenseDetailOpen.transitBusNumber}` : ""}
+                  {(() => {
+                    const isTransit1 = normalizeCategory(expenseDetailOpen.category) === "교통1";
+                    const transit1BusNumber = (() => {
+                      if (!isTransit1) return "";
+                      const seg = expenseDetailOpen.transitSegments;
+                      if (!Array.isArray(seg) || !seg.length) return "";
+                      for (const s of seg as any[]) {
+                        const mode = typeof s?.mode === "string" ? String(s.mode).trim().toUpperCase() : "";
+                        if (mode !== "BUS") continue;
+                        const bn = typeof s?.busNumber === "string" ? s.busNumber.trim() : "";
+                        if (bn) return bn;
+                      }
+                      return "";
+                    })();
+                    const isTransit1Bus = Boolean(transit1BusNumber);
+                    const icon = isTransit1Bus ? "🚌" : (expenseDetailOpen.transitMode ?? "");
+                    const route =
+                      (expenseDetailOpen.transitFrom ?? "?") +
+                      (expenseDetailOpen.transitVia ? ` → ${expenseDetailOpen.transitVia.split("|").join(" → ")}` : "") +
+                      " → " +
+                      (expenseDetailOpen.transitTo ?? "?");
+                    const suffix =
+                      (expenseDetailOpen.transitLine ? ` · ${expenseDetailOpen.transitLine}` : "") +
+                      (!isTransit1Bus && expenseDetailOpen.transitBusNumber ? ` · ${expenseDetailOpen.transitBusNumber}` : "");
+                    return (
+                      <>
+                        {icon ? `${icon} ` : ""}
+                        {isTransit1Bus ? `${transit1BusNumber} ` : ""}
+                        {route}
+                        {suffix}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ) : null}
-            {expenseDetailOpen.memo ? (
+            {normalizeCategory(expenseDetailOpen.category) !== "교통1" && expenseDetailOpen.memo ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">내용</div>
                 <div className="mt-1 text-slate-800">{expenseDetailOpen.memo}</div>
               </div>
             ) : null}
-            {expenseDetailOpen.detail ? (
+            {normalizeCategory(expenseDetailOpen.category) !== "교통1" && expenseDetailOpen.detail ? (
               <div className="mt-3">
                 <div className="text-xs text-slate-400">세부 내용</div>
                 <div className="mt-1 text-slate-800">
@@ -3306,14 +3215,13 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
               </div>
             ) : null}
             {/* 메모 입력 제거: memo는 '내용'으로 사용 */}
-            {expenseDetailOpen.participants ? (
+            {companionsExcludingPayerLabel(expenseDetailOpen).trim() ? (
               <div className="mt-3">
-                <div className="text-xs text-slate-400">함께한 사람</div>
-                <div className="mt-1 text-slate-800">
-                  {Array.isArray(expenseDetailOpen.participants)
-                    ? participantsDisplayWithoutMe(expenseDetailOpen.participants, "나")
-                    : JSON.stringify(expenseDetailOpen.participants)}
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                  함께한 사람
                 </div>
+                <div className="mt-1 text-slate-800">{companionsExcludingPayerLabel(expenseDetailOpen)}</div>
               </div>
             ) : null}
           </div>
@@ -3425,7 +3333,29 @@ export default function App({ view }: { view: "main" | "today" | "month" | "cale
             </div>
           }
         >
-          <ScheduleDetailNoteBlock title={scheduleDetailOpen.title} note={scheduleDetailOpen.note} />
+          <ScheduleDetailNoteBlock
+            title={scheduleDetailOpen.title}
+            note={scheduleDetailOpen.note}
+            cancelled={parseScheduleNote(scheduleDetailOpen.note ?? "").cancelled}
+            onCancelledChange={async (next) => {
+              const cur = scheduleDetailOpen;
+              const parsed = parseScheduleNote(cur.note);
+              const peopleCsv = parsed.people.join(",");
+              const memo = parsed.memo ?? "";
+              const detail = parsed.detail ?? "";
+              const note = encodeScheduleNote(peopleCsv, memo, detail, next);
+              try {
+                const updated = await updateSchedule.mutateAsync({
+                  id: cur.id,
+                  input: { note }
+                });
+                setScheduleDetailOpen(updated);
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                window.alert(`저장에 실패했어요.\n${msg}`);
+              }
+            }}
+          />
         </ComposeSheet>
       ) : null}
 
