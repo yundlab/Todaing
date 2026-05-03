@@ -48,10 +48,12 @@ export default function ScheduleDetailNoteBlock(props: {
         <div className="text-xs text-slate-400">내용</div>
         <div className="mt-1 break-words text-slate-800">{n.memo?.trim() ? n.memo : "—"}</div>
       </div>
-      <div className="mt-3">
-        <div className="text-xs text-slate-400">세부 내용</div>
-        <div className="mt-1 break-words text-slate-800">{n.detail?.trim() ? n.detail : "—"}</div>
-      </div>
+      {n.detail?.trim() ? (
+        <div className="mt-3">
+          <div className="text-xs text-slate-400">세부 내용</div>
+          <div className="mt-1 break-words text-slate-800">{n.detail.trim()}</div>
+        </div>
+      ) : null}
     </div>
   );
 }

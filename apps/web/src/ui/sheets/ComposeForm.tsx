@@ -75,8 +75,20 @@ export type ComposeFormProps = {
   setExInstallmentNoInterest: Dispatch<SetStateAction<boolean>>;
   plannedAtEnabled: boolean;
   setPlannedAtEnabled: Dispatch<SetStateAction<boolean>>;
-  plannedAtLocal: string;
-  setPlannedAtLocal: Dispatch<SetStateAction<string>>;
+  plannedUsageDayKey: string;
+  setPlannedUsageDayKey: Dispatch<SetStateAction<string>>;
+  plannedUsageStartText: string;
+  setPlannedUsageStartText: Dispatch<SetStateAction<string>>;
+  plannedUsageEndText: string;
+  setPlannedUsageEndText: Dispatch<SetStateAction<string>>;
+  plannedUsageTitle: string;
+  setPlannedUsageTitle: Dispatch<SetStateAction<string>>;
+  plannedUsageContent: string;
+  setPlannedUsageContent: Dispatch<SetStateAction<string>>;
+  plannedUsageDetail: string;
+  setPlannedUsageDetail: Dispatch<SetStateAction<string>>;
+  plannedUsageCompanionsText: string;
+  setPlannedUsageCompanionsText: Dispatch<SetStateAction<string>>;
   scheduleWithExpense: boolean;
   setScheduleWithExpense: Dispatch<SetStateAction<boolean>>;
   schedulePayTimeText: string;
@@ -85,6 +97,8 @@ export type ComposeFormProps = {
   setSchedulePeopleText: Dispatch<SetStateAction<string>>;
   scheduleShowOnCalendar: boolean;
   setScheduleShowOnCalendar: Dispatch<SetStateAction<boolean>>;
+  scheduleRepeatYearly: boolean;
+  setScheduleRepeatYearly: Dispatch<SetStateAction<boolean>>;
   scheduleExpenseTitle: string;
   setScheduleExpenseTitle: Dispatch<SetStateAction<string>>;
   transitLegs: TransitLeg[];
@@ -154,8 +168,20 @@ export function ComposeForm(props: ComposeFormProps) {
     setExInstallmentNoInterest,
     plannedAtEnabled,
     setPlannedAtEnabled,
-    plannedAtLocal,
-    setPlannedAtLocal,
+    plannedUsageDayKey,
+    setPlannedUsageDayKey,
+    plannedUsageStartText,
+    setPlannedUsageStartText,
+    plannedUsageEndText,
+    setPlannedUsageEndText,
+    plannedUsageTitle,
+    setPlannedUsageTitle,
+    plannedUsageContent,
+    setPlannedUsageContent,
+    plannedUsageDetail,
+    setPlannedUsageDetail,
+    plannedUsageCompanionsText,
+    setPlannedUsageCompanionsText,
     scheduleWithExpense,
     setScheduleWithExpense,
     schedulePayTimeText,
@@ -164,6 +190,8 @@ export function ComposeForm(props: ComposeFormProps) {
     setSchedulePeopleText,
     scheduleShowOnCalendar,
     setScheduleShowOnCalendar,
+    scheduleRepeatYearly,
+    setScheduleRepeatYearly,
     scheduleExpenseTitle,
     setScheduleExpenseTitle,
     transitLegs,
@@ -233,7 +261,9 @@ export function ComposeForm(props: ComposeFormProps) {
               <label
                 className={cn(
                   "flex min-w-0 w-full max-w-full flex-col",
-                  isTransit1 && "col-span-2"
+                  // 일정+교통1: 달력을 날짜와 같은 줄에 두기 위해 날짜는 1칸만 사용 (지출+교통1은 기존처럼 넓게)
+                  isTransit1 && composeKind !== "schedule" && "col-span-2",
+                  composeKind === "expense" && !isTransit1 && !isTransit2 && "col-span-2"
                 )}
               >
                 <div className="mb-1 text-xs text-slate-400">날짜(필수)</div>
@@ -292,98 +322,15 @@ export function ComposeForm(props: ComposeFormProps) {
                       </div>
                     </button>
                   </div>
-                ) : composeKind === "expense" ? (
-                <div className="min-w-0 w-full max-w-full">
-                  <div className="mb-1 text-xs text-slate-400 opacity-0 select-none">&nbsp;</div>
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
-                      plannedAtEnabled ? "border-indigo-200" : "border-slate-200"
-                    )}
-                    onClick={() => {
-                      if (!plannedAtEnabled && !plannedAtLocal) {
-                        const now = new Date();
-                        const yyyy = now.getFullYear();
-                        const mm = pad2(now.getMonth() + 1);
-                        const dd = pad2(now.getDate());
-                        const hh = pad2(now.getHours());
-                        const mi = pad2(now.getMinutes());
-                        setPlannedAtLocal(`${yyyy}-${mm}-${dd}T${hh}:${mi}`);
-                      }
-                      setPlannedAtEnabled((v) => !v);
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={cn(
-                          "inline-flex h-5 w-5 items-center justify-center rounded border",
-                          plannedAtEnabled
-                            ? "border-indigo-600 bg-indigo-600 text-white"
-                            : "border-slate-300 bg-white text-transparent"
-                        )}
-                        aria-hidden
-                      >
-                        ✓
-                      </span>
-                      <span className="text-sm font-semibold text-slate-900">다른 날</span>
-                    </div>
-                    <svg
-                      viewBox="0 0 24 24"
-                      className={cn(
-                        "h-5 w-5 shrink-0 text-slate-400 transition-transform",
-                        plannedAtEnabled ? "rotate-180" : "rotate-0"
-                      )}
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M6 9l6 6 6-6"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                  {plannedAtEnabled ? (
-                    <div className="mt-2 grid grid-cols-[1fr_7rem] gap-2">
-                      <DateMonthInput
-                        type="date"
-                        value={plannedAtLocal.split("T")[0] ?? ""}
-                        onChange={(e) => {
-                          const d = e.target.value;
-                          const t = plannedAtLocal.split("T")[1] ?? "";
-                          setPlannedAtLocal(d ? `${d}T${t}` : "");
-                        }}
-                        iconAlign="center"
-                        className="h-12 text-sm text-transparent caret-transparent"
-                      />
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="14:30"
-                        maxLength={5}
-                        value={plannedAtLocal.split("T")[1] ?? ""}
-                        onChange={(e) => {
-                          const t = normalizeFourDigitTimeInput(e.target.value);
-                          const d = plannedAtLocal.split("T")[0] ?? "";
-                          setPlannedAtLocal(`${d}T${t}`);
-                        }}
-                        className={cn(
-                          "h-12 w-full rounded-xl bg-white px-3 text-center text-sm tabular-nums",
-                          fieldBorderClass()
-                        )}
-                      />
-                    </div>
-                  ) : null}
-                </div>
+                ) : composeKind === "expense" && !isTransit1 && !isTransit2 ? null : composeKind === "expense" ? (
+                  <div aria-hidden className="min-w-0" />
                 ) : (
                   <div />
                 )
               ) : null}
               {composeKind === "schedule" && isTransit1 ? (
-                <div className="col-span-2 min-w-0">
+                <div className="min-w-0 w-full max-w-full">
+                  <div className="mb-1 text-xs text-slate-400">&nbsp;</div>
                   <button
                     type="button"
                     className={cn(
@@ -437,6 +384,33 @@ export function ComposeForm(props: ComposeFormProps) {
                 </div>
               ) : null}
             </div>
+            {composeKind === "schedule" ? (
+              <div className="col-span-2 min-w-0 w-full max-w-full">
+                <button
+                  type="button"
+                  className={cn(
+                    "flex h-12 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 text-left",
+                    scheduleRepeatYearly ? "border-indigo-200" : "border-slate-200"
+                  )}
+                  onClick={() => setScheduleRepeatYearly((v) => !v)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={cn(
+                        "inline-flex h-5 w-5 items-center justify-center rounded border",
+                        scheduleRepeatYearly
+                          ? "border-indigo-600 bg-indigo-600 text-white"
+                          : "border-slate-300 bg-white text-transparent"
+                      )}
+                      aria-hidden
+                    >
+                      ✓
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">기념일(매년 같은 날)</span>
+                  </div>
+                </button>
+              </div>
+            ) : null}
             {!isTransit1 && !isTransit2 ? (
               <>
                 <label>
@@ -552,10 +526,33 @@ export function ComposeForm(props: ComposeFormProps) {
                   <label className="col-span-2">
                     <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
                     <input
-                      value={entryTitle}
-                      onChange={(e) => setEntryTitle(e.target.value)}
-                      placeholder="예: 교통 이동시간 / 영화 / 헬스 / 오늘 뭐했는지"
+                      value={entryNote}
+                      onChange={(e) => setEntryNote(e.target.value)}
+                      placeholder="예: 프로젝트 헤일메리(IMAX) / 점심 메뉴"
                       className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass({ required: true }))}
+                    />
+                  </label>
+                ) : null}
+                <label className="col-span-2">
+                  <div className="mb-1 text-xs text-slate-400">세부 내용</div>
+                  <input
+                    value={exDetail}
+                    onChange={(e) => setExDetail(e.target.value)}
+                    placeholder="예: 팝콘, 콜라 / 영등포→서울역"
+                    className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
+                  />
+                </label>
+                {expenseScope === "PERSONAL" ? (
+                  <label className="col-span-2">
+                    <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+                      <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-300" aria-hidden />
+                      함께한 사람
+                    </div>
+                    <input
+                      value={expenseCompanionsText}
+                      onChange={(e) => setExpenseCompanionsText(e.target.value)}
+                      placeholder="쉼표로 구분 예: 철수, 영희"
+                      className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
                     />
                   </label>
                 ) : null}
@@ -625,32 +622,9 @@ export function ComposeForm(props: ComposeFormProps) {
                     ) : null}
                   </div>
                 </div>
-                <label className="col-span-2">
-                  <div className="mb-1 text-xs text-slate-400">세부 내용</div>
-                  <input
-                    value={exDetail}
-                    onChange={(e) => setExDetail(e.target.value)}
-                    placeholder="예: 팝콘, 콜라 / 영등포→서울역"
-                    className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
-                  />
-                </label>
-                {expenseScope === "PERSONAL" ? (
-                  <label className="col-span-2">
-                    <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
-                      <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-300" aria-hidden />
-                      함께한 사람
-                    </div>
-                    <input
-                      value={expenseCompanionsText}
-                      onChange={(e) => setExpenseCompanionsText(e.target.value)}
-                      placeholder="쉼표로 구분 예: 철수, 영희"
-                      className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
-                    />
-                  </label>
-                ) : null}
                 {!isTransit1 ? (
                   <label className="col-span-2">
-                    <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
+                    <div className="mb-1 text-xs text-slate-400">금액</div>
                     <input
                       inputMode="numeric"
                       value={exAmount}
@@ -659,6 +633,193 @@ export function ComposeForm(props: ComposeFormProps) {
                       className={cn("w-full rounded-xl bg-white px-3 py-3 text-base", fieldBorderClass({ required: true }))}
                     />
                   </label>
+                ) : null}
+                <div className="col-span-2 space-y-2">
+                  <div className="mb-1 text-xs text-slate-400">결제 수단(필수)</div>
+                  <div className="flex flex-wrap gap-2">
+                    {PAYMENT_TYPE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        className={cn(
+                          "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
+                          exPaymentType === opt.key
+                            ? "border-indigo-600 bg-indigo-600 text-white"
+                            : "border-slate-200 bg-white text-slate-800"
+                        )}
+                        onClick={() => {
+                          setExPaymentType(opt.key);
+                          if (opt.key === "CASH") setExPaymentLabel("");
+                          if (opt.key !== "CARD") {
+                            setExInstallment(false);
+                            setExInstallmentNoInterest(false);
+                          }
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {exPaymentType !== "CASH" ? (
+                    <input
+                      value={exPaymentLabel}
+                      onChange={(e) => setExPaymentLabel(e.target.value)}
+                      placeholder={
+                        exPaymentType === "CARD"
+                          ? "카드 이름"
+                          : exPaymentType === "ACCOUNT"
+                            ? "이체 메모 예: 토스/계좌"
+                            : "기타 결제수단 이름(필수)"
+                      }
+                      className={cn(
+                        "w-full rounded-xl bg-white px-3 py-3 text-sm",
+                        fieldBorderClass({ required: exPaymentType === "ETC" })
+                      )}
+                    />
+                  ) : null}
+                  {exPaymentType === "CARD" ? (
+                    <CardInstallmentFields
+                      installment={exInstallment}
+                      setInstallment={setExInstallment}
+                      months={exInstallmentMonths}
+                      setMonths={setExInstallmentMonths}
+                      noInterest={exInstallmentNoInterest}
+                      setNoInterest={setExInstallmentNoInterest}
+                    />
+                  ) : null}
+                </div>
+                {!isTransit2 ? (
+                  <div className="col-span-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                    {!plannedAtEnabled ? (
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-300/80 bg-white py-3 text-sm font-semibold text-indigo-700 shadow-sm"
+                        onClick={() => {
+                          setPlannedUsageDayKey(composeDayKey);
+                          setPlannedUsageStartText(entryStartText.trim() || "");
+                          setPlannedUsageEndText(entryEndText.trim() || "");
+                          setPlannedUsageTitle("");
+                          setPlannedUsageContent("");
+                          setPlannedUsageDetail("");
+                          setPlannedUsageCompanionsText("");
+                          setPlannedAtEnabled(true);
+                        }}
+                      >
+                        + 다른 날 사용
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold text-slate-900">다른 날 사용</span>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-rose-600"
+                            onClick={() => {
+                              setPlannedAtEnabled(false);
+                              setPlannedUsageDayKey("");
+                              setPlannedUsageStartText("");
+                              setPlannedUsageEndText("");
+                              setPlannedUsageTitle("");
+                              setPlannedUsageContent("");
+                              setPlannedUsageDetail("");
+                              setPlannedUsageCompanionsText("");
+                            }}
+                          >
+                            삭제
+                          </button>
+                        </div>
+                        <label className="block">
+                          <div className="mb-1 text-xs text-slate-400">사용일(필수)</div>
+                          <DateMonthInput
+                            type="date"
+                            required
+                            value={plannedUsageDayKey}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (!v) return;
+                              setPlannedUsageDayKey(v);
+                            }}
+                            className="h-12 w-full text-sm"
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="min-w-0">
+                            <div className="mb-1 text-xs text-slate-400">시작(필수)</div>
+                            <input
+                              value={plannedUsageStartText}
+                              onChange={(e) =>
+                                setPlannedUsageStartText(normalizeFourDigitTimeInput(e.target.value))
+                              }
+                              placeholder="예: 09:00"
+                              className={cn(
+                                "w-full rounded-xl bg-white px-3 py-3 text-sm tabular-nums",
+                                fieldBorderClass({ required: true })
+                              )}
+                            />
+                          </label>
+                          <label className="min-w-0">
+                            <div className="mb-1 text-xs text-slate-400">끝</div>
+                            <input
+                              value={plannedUsageEndText}
+                              onChange={(e) =>
+                                setPlannedUsageEndText(normalizeFourDigitTimeInput(e.target.value))
+                              }
+                              placeholder="예: 10:30"
+                              className={cn(
+                                "w-full rounded-xl bg-white px-3 py-3 text-sm tabular-nums",
+                                fieldBorderClass()
+                              )}
+                            />
+                          </label>
+                        </div>
+                        <label className="block">
+                          <div className="mb-1 text-xs text-slate-400">제목(필수)</div>
+                          <input
+                            value={plannedUsageTitle}
+                            onChange={(e) => setPlannedUsageTitle(e.target.value)}
+                            placeholder="예: 영화 관람 / 회의"
+                            className={cn(
+                              "w-full rounded-xl bg-white px-3 py-3 text-sm",
+                              fieldBorderClass({ required: true })
+                            )}
+                          />
+                        </label>
+                        <label className="block">
+                          <div className="mb-1 text-xs text-slate-400">내용(필수)</div>
+                          <input
+                            value={plannedUsageContent}
+                            onChange={(e) => setPlannedUsageContent(e.target.value)}
+                            placeholder="예: IMAX 2D / 프로젝트 킥오프"
+                            className={cn(
+                              "w-full rounded-xl bg-white px-3 py-3 text-sm",
+                              fieldBorderClass({ required: true })
+                            )}
+                          />
+                        </label>
+                        <label className="block">
+                          <div className="mb-1 text-xs text-slate-400">세부 내용</div>
+                          <input
+                            value={plannedUsageDetail}
+                            onChange={(e) => setPlannedUsageDetail(e.target.value)}
+                            placeholder="선택"
+                            className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
+                          />
+                        </label>
+                        <label className="block">
+                          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+                            <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-300" aria-hidden />
+                            함께한 사람
+                          </div>
+                          <input
+                            value={plannedUsageCompanionsText}
+                            onChange={(e) => setPlannedUsageCompanionsText(e.target.value)}
+                            placeholder="쉼표로 구분 예: 철수, 영희"
+                            className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
                 ) : null}
               </>
             ) : (
@@ -759,6 +920,29 @@ export function ComposeForm(props: ComposeFormProps) {
                           className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass({ required: true }))}
                         />
                       </label>
+                      <label className="block">
+                        <div className="mb-1 text-xs text-slate-400">세부 내용</div>
+                        <input
+                          value={exDetail}
+                          onChange={(e) => setExDetail(e.target.value)}
+                          placeholder="예: 팝콘, 콜라 / 영등포→서울역"
+                          className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
+                        />
+                      </label>
+                      {expenseScope === "PERSONAL" ? (
+                        <label className="block">
+                          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+                            <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-300" aria-hidden />
+                            함께한 사람
+                          </div>
+                          <input
+                            value={expenseCompanionsText}
+                            onChange={(e) => setExpenseCompanionsText(e.target.value)}
+                            placeholder="쉼표로 구분 예: 철수, 영희"
+                            className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
+                          />
+                        </label>
+                      ) : null}
                       <div className="grid grid-cols-2 gap-2">
                         <div className="min-w-0 space-y-2">
                           <div className="mb-1 text-xs text-slate-400">결제자(필수)</div>
@@ -824,32 +1008,9 @@ export function ComposeForm(props: ComposeFormProps) {
                           ) : null}
                         </div>
                       </div>
-                      <label className="block">
-                        <div className="mb-1 text-xs text-slate-400">세부 내용</div>
-                        <input
-                          value={exDetail}
-                          onChange={(e) => setExDetail(e.target.value)}
-                          placeholder="예: 팝콘, 콜라 / 영등포→서울역"
-                          className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
-                        />
-                      </label>
-                      {expenseScope === "PERSONAL" ? (
-                        <label className="block">
-                          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
-                            <UsersIcon className="h-3.5 w-3.5 shrink-0 text-slate-300" aria-hidden />
-                            함께한 사람
-                          </div>
-                          <input
-                            value={expenseCompanionsText}
-                            onChange={(e) => setExpenseCompanionsText(e.target.value)}
-                            placeholder="쉼표로 구분 예: 철수, 영희"
-                            className={cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass())}
-                          />
-                        </label>
-                      ) : null}
                       {!isTransit1 ? (
                         <label className="block">
-                          <div className="mb-1 text-xs text-slate-400">금액(필수)</div>
+                          <div className="mb-1 text-xs text-slate-400">금액</div>
                           <input
                             inputMode="numeric"
                             value={exAmount}
@@ -920,66 +1081,6 @@ export function ComposeForm(props: ComposeFormProps) {
               </>
             ) : null}
 
-            {composeKind === "expense" ? (
-              <>
-                <div className="col-span-2 space-y-2">
-                  <div className="mb-1 text-xs text-slate-400">결제 수단(필수)</div>
-                  <div className="flex flex-wrap gap-2">
-                    {PAYMENT_TYPE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.key}
-                        type="button"
-                        className={cn(
-                          "flex-1 min-w-[4.5rem] rounded-xl border px-3 py-3 text-sm font-semibold shadow-sm",
-                          exPaymentType === opt.key
-                            ? "border-indigo-600 bg-indigo-600 text-white"
-                            : "border-slate-200 bg-white text-slate-800"
-                        )}
-                        onClick={() => {
-                          setExPaymentType(opt.key);
-                          if (opt.key === "CASH") setExPaymentLabel("");
-                          if (opt.key !== "CARD") {
-                            setExInstallment(false);
-                            setExInstallmentNoInterest(false);
-                          }
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  {exPaymentType !== "CASH" ? (
-                    <input
-                      value={exPaymentLabel}
-                      onChange={(e) => setExPaymentLabel(e.target.value)}
-                      placeholder={
-                        exPaymentType === "CARD"
-                          ? "카드 이름"
-                          : exPaymentType === "ACCOUNT"
-                            ? "이체 메모 예: 토스/계좌"
-                            : "기타 결제수단 이름(필수)"
-                      }
-                      className={cn(
-                              "w-full rounded-xl bg-white px-3 py-3 text-sm",
-                              fieldBorderClass({ required: exPaymentType === "ETC" })
-                            )}
-                    />
-                  ) : null}
-                  {exPaymentType === "CARD" ? (
-                    <CardInstallmentFields
-                      installment={exInstallment}
-                      setInstallment={setExInstallment}
-                      months={exInstallmentMonths}
-                      setMonths={setExInstallmentMonths}
-                      noInterest={exInstallmentNoInterest}
-                      setNoInterest={setExInstallmentNoInterest}
-                    />
-                  ) : null}
-                </div>
-
-                {/* 결제처는 카테고리 아래 입력으로 이동 */}
-              </>
-            ) : null}
           </div>
     </div>
   );

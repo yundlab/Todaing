@@ -1,5 +1,8 @@
 import type { Expense } from "@/features/expenses/api";
 import { yyyyMmDdLocal, yyyyMmLocal } from "@/domain/date";
+import { plannedUsageDayKeyWhenDiffers } from "@/domain/expenseDayUsage";
+import { emojiForCategory, normalizeCategory } from "@/domain/categoryUi";
+import { transit2HasUsageSegmentOnDay } from "@/domain/plannedUsageOnDay";
 import { myShareAmountForMe } from "@/domain/settlement";
 
 export type AggregateMode = "usage" | "cashflow";
@@ -136,7 +139,7 @@ export function sumExpensesForMonthToDate(
   return sum;
 }
 
-/** 달력 셀용: 일자별 합계 Map. 사용액=결제일 전액. 실출금=각 분배월의 1일에 누적(달력은 월 단위 의미). */
+/** 달력 셀용: 일자별 합계 Map. 사용액=결제일(occurredAt) 전액. 실출금=각 분배월의 1일에 누적(달력은 월 단위 의미). */
 export function spendByDayForCalendar(
   mode: AggregateMode,
   expenses: Expense[],
@@ -167,6 +170,64 @@ export function spendByDayForCalendar(
       }
       byDay.set(day, (byDay.get(day) ?? 0) + a.amount);
     }
+  }
+  return byDay;
+}
+
+function pushCalendarDayIcon(byDay: Map<string, string[]>, dayKey: string, icon: string) {
+  if (!icon) return;
+  const arr = byDay.get(dayKey) ?? [];
+  if (!arr.includes(icon)) arr.push(icon);
+  byDay.set(dayKey, arr);
+}
+
+/**
+ * 달력: 결제일과 다른 실제 사용일·교통2 구간 이용일 셀에 메인 타임라인과 맞는 표식을 둔다.
+ * (합계는 `spendByDayForCalendar`가 모드별로 처리하고, 여기서는 사용액·실출금 동일하게 “표시만” 맞춘다.)
+ */
+export function plannedUsageCategoryIconsByDayForCalendar(
+  _mode: AggregateMode,
+  expenses: Expense[],
+  monthKey: string
+): Map<string, string[]> {
+  const byDay = new Map<string, string[]>();
+  for (const e of expenses) {
+    const cat = normalizeCategory(e.category || "");
+    const occurredDay = yyyyMmDdLocal(new Date(e.occurredAt));
+
+    if (cat === "교통2") {
+      if (Array.isArray(e.transitSegments) && e.transitSegments.length) {
+        for (const s of e.transitSegments as Record<string, unknown>[]) {
+          const dk = typeof s?.dayKey === "string" ? s.dayKey.trim() : "";
+          if (!dk || !/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
+          if (yyyyMmLocal(new Date(`${dk}T00:00:00`)) !== monthKey) continue;
+          if (occurredDay === dk) continue;
+          const segMode = typeof s?.mode === "string" ? String(s.mode).trim() : "";
+          const icon =
+            segMode || (e.transitMode ?? "").trim() || emojiForCategory("교통2");
+          pushCalendarDayIcon(byDay, dk, icon);
+        }
+      }
+      const plannedDiff = plannedUsageDayKeyWhenDiffers(e);
+      if (plannedDiff && e.plannedAt && yyyyMmLocal(new Date(e.plannedAt)) === monthKey) {
+        if (!transit2HasUsageSegmentOnDay(e, plannedDiff)) {
+          const seg = e.transitSegments;
+          const firstMode =
+            Array.isArray(seg) && seg[0] && typeof seg[0] === "object"
+              ? String((seg[0] as { mode?: unknown }).mode ?? "").trim()
+              : "";
+          const icon =
+            firstMode || (e.transitMode ?? "").trim() || emojiForCategory("교통2");
+          pushCalendarDayIcon(byDay, plannedDiff, icon);
+        }
+      }
+      continue;
+    }
+
+    const dk = plannedUsageDayKeyWhenDiffers(e);
+    if (!dk) continue;
+    if (!e.plannedAt || yyyyMmLocal(new Date(e.plannedAt)) !== monthKey) continue;
+    pushCalendarDayIcon(byDay, dk, emojiForCategory(e.category || ""));
   }
   return byDay;
 }

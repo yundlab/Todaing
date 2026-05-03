@@ -7,6 +7,8 @@ export type Expense = {
   amount: number;
   category: string;
   merchant: string | null;
+  /** 결제 건 제목. 구 API 응답에는 없을 수 있음. */
+  subject?: string | null;
   detail: string | null;
   memo: string | null;
   paymentType: "CARD" | "CASH" | "ACCOUNT" | "ETC";
@@ -18,6 +20,13 @@ export type Expense = {
   installmentNoInterest?: boolean;
   /** 결제일(occurredAt)과 다른 사용 예정/실제일. null이면 결제일과 동일. */
   plannedAt: string | null;
+  plannedEndAt: string | null;
+  /** 다른 날 사용 — 실제 이용 제목 */
+  plannedMemo: string | null;
+  /** 다른 날 사용 — 실제 이용 내용 */
+  plannedContent?: string | null;
+  plannedDetail: string | null;
+  plannedCompanionsText: string | null;
   scope: "PERSONAL" | "SHARED";
   participants: unknown | null;
   transitFrom: string | null;
@@ -37,6 +46,7 @@ export type ExpenseCreateInput = {
   amount: number;
   category: string;
   merchant?: string | null;
+  subject?: string | null;
   detail?: string | null;
   memo?: string | null;
   paymentType?: "CARD" | "CASH" | "ACCOUNT" | "ETC";
@@ -46,6 +56,11 @@ export type ExpenseCreateInput = {
   installmentMonths?: number | null;
   installmentNoInterest?: boolean;
   plannedAt?: string | null;
+  plannedEndAt?: string | null;
+  plannedMemo?: string | null;
+  plannedContent?: string | null;
+  plannedDetail?: string | null;
+  plannedCompanionsText?: string | null;
   scope?: "PERSONAL" | "SHARED";
   participants?: unknown | null;
   transitFrom?: string | null;

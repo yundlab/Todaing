@@ -201,6 +201,8 @@ export type ComposeFormProps = {
   setSchedulePeopleText: Dispatch<SetStateAction<string>>;
   scheduleShowOnCalendar: boolean;
   setScheduleShowOnCalendar: Dispatch<SetStateAction<boolean>>;
+  scheduleRepeatYearly: boolean;
+  setScheduleRepeatYearly: Dispatch<SetStateAction<boolean>>;
   scheduleExpenseTitle: string;
   setScheduleExpenseTitle: Dispatch<SetStateAction<string>>;
   transitLegs: TransitLeg[];
@@ -280,6 +282,8 @@ export function ComposeForm(props: ComposeFormProps) {
     setSchedulePeopleText,
     scheduleShowOnCalendar,
     setScheduleShowOnCalendar,
+    scheduleRepeatYearly,
+    setScheduleRepeatYearly,
     scheduleExpenseTitle,
     setScheduleExpenseTitle,
     transitLegs,

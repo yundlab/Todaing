@@ -4,7 +4,12 @@ import type { Expense } from "@/features/expenses/api";
 import type { ScheduleItem } from "@/features/schedules/api";
 import BottomNav from "@/components/BottomNav";
 import { yyyyMmDdLocal } from "@/domain/date";
-import { spendByDayForCalendar, sumExpensesForMonth, type AggregateMode } from "@/domain/installment";
+import {
+  plannedUsageCategoryIconsByDayForCalendar,
+  spendByDayForCalendar,
+  sumExpensesForMonth,
+  type AggregateMode
+} from "@/domain/installment";
 import { emojiForCategory, normalizeCategory, parseEmojiPrefixedTitle } from "@/domain/categoryUi";
 import { formatCalendarWon } from "@/domain/calendarSpendFormat";
 import { cn } from "@/components/cn";
@@ -25,6 +30,7 @@ export default function CalendarView({
   monthSchedules: ScheduleItem[];
 }) {
   const spendByDay = spendByDayForCalendar(aggregateMode, expensesAll, monthKey);
+  const plannedUsageIconsByDay = plannedUsageCategoryIconsByDayForCalendar(aggregateMode, expensesAll, monthKey);
   const calendarMonthTotal = sumExpensesForMonth(aggregateMode, expensesAll, monthKey);
 
   const schedulesByDay = new Map<string, ScheduleItem[]>();
@@ -122,9 +128,11 @@ export default function CalendarView({
                       return emojiForCategory(normalizeCategory(parsed.category || "기타"));
                     })
                     .filter(Boolean);
+                  const usagePlanIcons = plannedUsageIconsByDay.get(dayKeyCell) ?? [];
+                  const cellIcons = [...schedIcons, ...usagePlanIcons];
                   const maxShow = 6;
-                  const shown = schedIcons.slice(0, maxShow);
-                  const rest = schedIcons.length - shown.length;
+                  const shown = cellIcons.slice(0, maxShow);
+                  const rest = cellIcons.length - shown.length;
                   return (
                     <button
                       key={dayKeyCell}
@@ -137,12 +145,13 @@ export default function CalendarView({
                         <div className="h-[28px] min-w-0">
                           <div className={cn("text-xs font-extrabold tabular-nums leading-none", dayTone)}>{dayNum}</div>
                           <div
-                            className={cn(
-                              "mt-1 whitespace-nowrap text-[10px] font-semibold tabular-nums tracking-tight text-slate-600",
-                              spend ? "opacity-100" : "opacity-0"
-                            )}
+                            className={cn("mt-1 min-h-[14px] space-y-0.5", spend ? "opacity-100" : "opacity-0")}
                           >
-                            {formatCalendarWon(spend)}
+                            {spend ? (
+                              <div className="whitespace-nowrap text-[10px] font-semibold tabular-nums tracking-tight text-slate-600">
+                                {formatCalendarWon(spend)}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                         {shown.length ? (

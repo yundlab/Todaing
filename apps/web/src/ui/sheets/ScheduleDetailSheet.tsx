@@ -41,6 +41,12 @@ export default function ScheduleDetailSheet({
           </>
         );
       })()}
+      {schedule.repeatYearly ? (
+        <>
+          <span className="shrink-0">·</span>
+          <span className="text-xs font-semibold text-indigo-600">매년 같은 날</span>
+        </>
+      ) : null}
     </div>
   );
 

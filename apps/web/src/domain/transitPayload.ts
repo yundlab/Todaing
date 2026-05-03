@@ -75,7 +75,9 @@ function legToSegment(leg: TransitLeg) {
       from: leg.from || null,
       to: leg.to || null,
       amount: (() => {
-        const parsed = parseAmountInput(String(leg.amount ?? ""));
+        const raw = String(leg.amount ?? "").trim();
+        if (raw === "") return 0;
+        const parsed = parseAmountInput(raw);
         return parsed == null ? null : parsed;
       })()
     };
@@ -88,7 +90,9 @@ function legToSegment(leg: TransitLeg) {
     to: leg.to?.name ?? null,
     line: leg.line || null,
     amount: (() => {
-      const parsed = parseAmountInput(String(leg.amount ?? ""));
+      const raw = String(leg.amount ?? "").trim();
+      if (raw === "") return 0;
+      const parsed = parseAmountInput(raw);
       return parsed == null ? null : parsed;
     })()
   };

@@ -20,7 +20,15 @@ import type { ScheduleItem } from "@/features/schedules/api";
 import { emptyTransit1Leg, type TransitLeg, type Transit2SegmentDraft } from "@/domain/transitPayload";
 import Header from "@/components/Header";
 import LoginScreen from "@/components/LoginScreen";
-import { AUTH_USER_LS_KEY, type AuthUser } from "@/lib/auth";
+import {
+  AUTH_SESSION_LS_KEY,
+  AUTH_USER_LS_KEY,
+  decodeAuthSessionPayload,
+  decodeGsiUserPayload,
+  readStoredSessionToken,
+  type AuthUser
+} from "@/lib/auth";
+import { HttpError } from "@/lib/http";
 import SettlementRecordDialog from "@/components/SettlementRecordDialog";
 import StationSearchSheet, { type StationSearchTarget } from "@/components/StationSearchSheet";
 import BusStopSearchSheet from "@/components/BusStopSearchSheet";
@@ -40,7 +48,7 @@ import {
   serializeMonthlyBudgetByYm
 } from "@/domain/monthlyBudgetStorage";
 import { formatWon, myShareAmountForMe, settlementDeltaForMe, settlementTransfersForMe } from "@/domain/settlement";
-import { normalizeCategory, parseEmojiPrefixedTitle } from "@/domain/categoryUi";
+import { emojiForCategory, normalizeCategory, parseEmojiPrefixedTitle } from "@/domain/categoryUi";
 import {
   AGGREGATE_MODE_LS_KEY,
   expenseCashflowAllocations,
@@ -56,6 +64,9 @@ import { transitSegmentToLeg, transit1LegsWithAmountFallback } from "@/domain/tr
 import { pickSubwayLineForPool, subwayLinePool } from "@/domain/transitSubwayLines";
 import { clamp01 } from "@/domain/expensePaymentUi";
 import { expensesOccurringWithinSchedule } from "@/domain/scheduleExpenseLink";
+import { expensePersistedId } from "@/domain/expenseDayUsage";
+import { prettifyTransitPlaceName, transit2UsageMemoForCard } from "@/domain/expenseTransitText";
+import { plannedUsageDaySlices } from "@/domain/plannedUsageOnDay";
 import { parseMainDayQuery } from "@/domain/mainDayQuery";
 import type { TimelineItem } from "@/domain/timelineTypes";
 import CalendarView from "@/ui/views/CalendarView";
@@ -72,8 +83,28 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
   const navigate = useNavigate();
   const params = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [sessionReady, setSessionReady] = useState(() => {
+    try {
+      const tok = readStoredSessionToken();
+      return Boolean(tok && decodeAuthSessionPayload(tok));
+    } catch {
+      return false;
+    }
+  });
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
     try {
+      const tok = readStoredSessionToken();
+      const fromJwt = tok ? decodeAuthSessionPayload(tok) : null;
+      if (fromJwt) {
+        let picture: string | undefined;
+        try {
+          const raw = window.localStorage.getItem(AUTH_USER_LS_KEY);
+          if (raw) picture = (JSON.parse(raw) as AuthUser).picture;
+        } catch {
+          void 0;
+        }
+        return { email: fromJwt.email, name: fromJwt.name, picture };
+      }
       const raw = window.localStorage.getItem(AUTH_USER_LS_KEY);
       return raw ? (JSON.parse(raw) as AuthUser) : null;
     } catch {
@@ -82,14 +113,35 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
   });
 
   useEffect(() => {
-    // Redirect-based Google login fallback: API redirects back with `gsi_user`.
-    try {
-      const url = new URL(window.location.href);
-      const raw = url.searchParams.get("gsi_user");
-      if (!raw) return;
-
-      const json = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
-      const u = JSON.parse(json) as AuthUser;
+    // `/auth/google` 리다이렉트: `auth_session`(JWT) + 선택 `gsi_user`(표시용)
+    // 페이로드에 한글 등 UTF-8이 있으면 atob+JSON만으로는 깨지므로 decodeGsiUserPayload 사용
+    const url = new URL(window.location.href);
+    const sessionRaw = url.searchParams.get("auth_session");
+    if (sessionRaw) {
+      const token = decodeURIComponent(sessionRaw);
+      window.localStorage.setItem(AUTH_SESSION_LS_KEY, token);
+      const p = decodeAuthSessionPayload(token);
+      if (p) {
+        let picture: string | undefined;
+        const g = url.searchParams.get("gsi_user");
+        if (g) {
+          const u = decodeGsiUserPayload<AuthUser>(g);
+          if (u?.picture) picture = u.picture;
+        }
+        setAuthUser({ email: p.email, name: p.name, picture });
+        setSessionReady(true);
+      } else {
+        try {
+          window.localStorage.removeItem(AUTH_SESSION_LS_KEY);
+        } catch {
+          void 0;
+        }
+      }
+      url.searchParams.delete("auth_session");
+    }
+    const rawGsi = url.searchParams.get("gsi_user");
+    if (rawGsi) {
+      const u = decodeGsiUserPayload<AuthUser>(rawGsi);
       if (u?.email) {
         try {
           window.localStorage.setItem(AUTH_USER_LS_KEY, JSON.stringify(u));
@@ -99,17 +151,15 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
         setAuthUser(u);
       }
       url.searchParams.delete("gsi_user");
-      window.history.replaceState({}, "", url.toString());
-    } catch {
-      // ignore
     }
+    window.history.replaceState({}, "", url.toString());
   }, []);
 
   useEffect(() => {
     void loadCapitalMetroStations();
   }, []);
 
-  const { data: expensesData, error: expensesError } = useExpenses();
+  const { data: expensesData, error: expensesError } = useExpenses({ enabled: sessionReady });
   const showCategoryPreview = useMemo(() => {
     try {
       return new URLSearchParams(window.location.search).get("previewCategories") === "1";
@@ -337,10 +387,26 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     return d;
   }, [selectedDay]);
 
-  const { data: scheduleData, error: scheduleError } = useSchedules(dayKey);
-  const { data: monthSchedulesData } = useMonthSchedules(monthKey, { onlyCalendar: calendarOpen });
-  const { data: todaySummary } = useExpenseSummary(dayKey);
-  useMonthlyExpenseSummary(monthKey);
+  const { data: scheduleData, error: scheduleError } = useSchedules(dayKey, { enabled: sessionReady });
+  // 달력·이번 달 화면은 월 단위로 전부 불러옴(`onlyCalendar` 필터는 기본 false인 일정이 누락되어 이모지가 비는 문제가 있음)
+  const { data: monthSchedulesData } = useMonthSchedules(monthKey, {
+    onlyCalendar: false,
+    enabled: sessionReady
+  });
+  const { data: todaySummary } = useExpenseSummary(dayKey, { enabled: sessionReady });
+  useMonthlyExpenseSummary(monthKey, { enabled: sessionReady });
+
+  useEffect(() => {
+    const err = expensesError ?? scheduleError;
+    if (!(err instanceof HttpError) || err.status !== 401) return;
+    try {
+      window.localStorage.removeItem(AUTH_SESSION_LS_KEY);
+    } catch {
+      void 0;
+    }
+    setSessionReady(false);
+    setAuthUser(null);
+  }, [expensesError, scheduleError]);
 
   const createExpense = useCreateExpense();
   const updateExpense = useUpdateExpense();
@@ -373,7 +439,8 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
   const [scheduleWithExpense, setScheduleWithExpense] = useState(false);
   const [schedulePayTimeText, setSchedulePayTimeText] = useState("");
   const [schedulePeopleText, setSchedulePeopleText] = useState("");
-  const [scheduleShowOnCalendar, setScheduleShowOnCalendar] = useState(false);
+  const [scheduleShowOnCalendar, setScheduleShowOnCalendar] = useState(true);
+  const [scheduleRepeatYearly, setScheduleRepeatYearly] = useState(false);
   const [scheduleCancelled, setScheduleCancelled] = useState(false);
   const [scheduleExpenseTitle, setScheduleExpenseTitle] = useState("");
 
@@ -419,21 +486,35 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     setExInstallmentNoInterest,
     plannedAtEnabled,
     setPlannedAtEnabled,
-    plannedAtLocal,
-    setPlannedAtLocal,
+    plannedUsageDayKey,
+    setPlannedUsageDayKey,
+    plannedUsageStartText,
+    setPlannedUsageStartText,
+    plannedUsageEndText,
+    setPlannedUsageEndText,
+    plannedUsageTitle,
+    setPlannedUsageTitle,
+    plannedUsageContent,
+    setPlannedUsageContent,
+    plannedUsageDetail,
+    setPlannedUsageDetail,
+    plannedUsageCompanionsText,
+    setPlannedUsageCompanionsText,
     reset: resetComposeForm
   } = useExpenseComposeForm();
 
-  // 작성 시트 열 때 시작 시간이 비어있으면 현재 시간으로 자동 채움(교통1·2는 구간/상단 시간을 비워 두기)
+  // 작성 시트가 열리거나 카테고리를 교통1·2가 아닌 것으로 바꿀 때: 시작(필수)이 비어 있으면 현재 시각으로 채움
+  // (기본 카테고리가 교통1이라 첫 effect는 건너뛰고, 식비 등으로 바꿔도 이전엔 재실행이 안 돼 저장이 막히는 문제 방지)
   useEffect(() => {
-    if (!composeOpen || entryStartText.trim()) return;
+    if (!composeOpen) return;
     const cat = entryCategory.trim();
     if (cat === "교통1" || cat === "교통2") return;
-    const now = new Date();
-    setEntryStartText(`${pad2(now.getHours())}:${pad2(now.getMinutes())}`);
-    // entryStartText 변경 시에는 다시 채우지 않음(사용자가 지웠다가 시트를 닫지 않은 상태 등)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [composeOpen]);
+    setEntryStartText((prev) => {
+      if (prev.trim()) return prev;
+      const now = new Date();
+      return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+    });
+  }, [composeOpen, entryCategory]);
 
   // 교통2 (기차/버스/택시/비행기) - 단일 구간
   const [exTransitMode, setExTransitMode] = useState<string>("🚆"); // 교통2: 🚆🚍🚖✈️
@@ -456,7 +537,8 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     setScheduleWithExpense(false);
     setSchedulePayTimeText("");
     setSchedulePeopleText("");
-    setScheduleShowOnCalendar(false);
+    setScheduleShowOnCalendar(true);
+    setScheduleRepeatYearly(false);
     setScheduleCancelled(false);
     setExTransitMode("🚆");
     setExTransitFromText("");
@@ -498,7 +580,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     const items = expensesData?.items ?? [];
     return items
       .filter((e) => yyyyMmDdLocal(new Date(e.occurredAt)) === dayKey)
-      .sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
+      .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
   }, [expensesData, dayKey]);
 
   const resolveOriginalExpense = useCallback(
@@ -562,7 +644,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     await loadCapitalMetroStations();
     const base = resolveOriginalExpense(e);
     setComposeEditScheduleId(null);
-    setComposeEditExpenseId(base.id);
+    setComposeEditExpenseId(expensePersistedId(base));
     setComposeDayKey(yyyyMmDdLocal(new Date(base.occurredAt)));
     setComposeKind("expense");
     setScheduleWithExpense(false);
@@ -578,10 +660,10 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
       setEntryEndText("");
     }
     setEntryCategory(base.category);
-    setEntryTitle((base.memo ?? "").trim());
+    setEntryTitle("");
     setExDetail((base.detail ?? "").trim());
     setExMerchant(base.merchant ?? "");
-    setEntryNote("");
+    setEntryNote((base.memo ?? "").trim());
     setExAmount(formatAmountInputWithCommas(String(base.amount)));
     setExPaymentType(base.paymentType);
     setExPaymentLabel(base.paymentMethodLabel ?? "");
@@ -616,26 +698,60 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
       );
     }
 
-    // plannedAt 복원: occurredAt과 다를 때만 토글 ON, datetime-local 입력값 채움
+    // 다른 날 사용 복원
     if (base.plannedAt) {
       const planned = new Date(base.plannedAt);
       const occurred = new Date(base.occurredAt);
       const sameMoment = planned.getTime() === occurred.getTime();
       if (!sameMoment && !Number.isNaN(planned.getTime())) {
         setPlannedAtEnabled(true);
-        const yyyy = planned.getFullYear();
-        const mm = pad2(planned.getMonth() + 1);
-        const dd = pad2(planned.getDate());
-        const hh = pad2(planned.getHours());
-        const mi = pad2(planned.getMinutes());
-        setPlannedAtLocal(`${yyyy}-${mm}-${dd}T${hh}:${mi}`);
+        setPlannedUsageDayKey(yyyyMmDdLocal(planned));
+        setPlannedUsageStartText(`${pad2(planned.getHours())}:${pad2(planned.getMinutes())}`);
+        if (base.plannedEndAt) {
+          const pe = new Date(base.plannedEndAt);
+          setPlannedUsageEndText(`${pad2(pe.getHours())}:${pad2(pe.getMinutes())}`);
+        } else {
+          setPlannedUsageEndText("");
+        }
+        const pm = (base.plannedMemo ?? "").trim();
+        const pc = (base.plannedContent ?? "").trim();
+        if (pc) {
+          setPlannedUsageTitle(pm);
+          setPlannedUsageContent(pc);
+        } else if (pm) {
+          setPlannedUsageTitle("");
+          setPlannedUsageContent(pm);
+        } else {
+          const mf = (base.memo ?? "").trim();
+          if (mf) {
+            setPlannedUsageTitle(mf);
+            setPlannedUsageContent(mf);
+          } else {
+            setPlannedUsageTitle("");
+            setPlannedUsageContent("");
+          }
+        }
+        setPlannedUsageDetail((base.plannedDetail ?? "").trim());
+        setPlannedUsageCompanionsText((base.plannedCompanionsText ?? "").trim());
       } else {
         setPlannedAtEnabled(false);
-        setPlannedAtLocal("");
+        setPlannedUsageDayKey("");
+        setPlannedUsageStartText("");
+        setPlannedUsageEndText("");
+        setPlannedUsageTitle("");
+        setPlannedUsageContent("");
+        setPlannedUsageDetail("");
+        setPlannedUsageCompanionsText("");
       }
     } else {
       setPlannedAtEnabled(false);
-      setPlannedAtLocal("");
+      setPlannedUsageDayKey("");
+      setPlannedUsageStartText("");
+      setPlannedUsageEndText("");
+      setPlannedUsageTitle("");
+      setPlannedUsageContent("");
+      setPlannedUsageDetail("");
+      setPlannedUsageCompanionsText("");
     }
 
     if (normalizeCategory(base.category) === "교통1") {
@@ -710,6 +826,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     setScheduleWithExpense(false);
     setSchedulePayTimeText("");
     setScheduleShowOnCalendar(Boolean(full.showOnCalendar));
+    setScheduleRepeatYearly(Boolean(full.repeatYearly));
 
     const s = new Date(full.startAt);
     const startHhMm = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
@@ -1006,6 +1123,22 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
       expense: e
     }));
 
+    // 결제일과 다른 plannedAt "실제 사용일"(교통2는 구간 dayKey가 없을 때만 보조 포함)
+    const plannedAtUsageExpenseItems: TimelineItem[] = plannedUsageDaySlices(
+      dayKey,
+      expensesData?.items ?? [],
+      dayLocal00
+    ).map((slice) => ({
+      kind: "usage-expense" as const,
+      startMs: slice.startMs,
+      expense: slice.expense,
+      label: slice.label,
+      startText: slice.startText,
+      endText: slice.endText,
+      usageMemo: slice.usageMemo,
+      ...(slice.usageTransitMode ? { usageTransitMode: slice.usageTransitMode } : {})
+    }));
+
     // 결제일(occurredAt)과 다른 "이용일" 표시용(합계 미포함): 교통2 Method C의 transitSegments dayKey를 사용
     const usageExpenseItems: TimelineItem[] = (() => {
       const all = expensesData?.items ?? [];
@@ -1020,13 +1153,26 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
           if (occurredDay === dayKey) continue; // same-day면 중복표시 X
           const startText = typeof s?.start === "string" ? String(s.start).trim() : "";
           const endText = typeof s?.end === "string" ? String(s.end).trim() : "";
-          const usageMemo = typeof s?.memo === "string" ? String(s.memo).trim() : "";
+          const usageMemo = transit2UsageMemoForCard(e, s as Record<string, unknown>);
+          const usageTransitMode =
+            typeof s?.mode === "string" ? String(s.mode).trim() : "";
           const m = startText ? parseFlexibleTimeToMinutes(startText) : null;
           const startMs = m != null ? dateFromSlotMinutes(dayLocal00, m).getTime() : dayLocal00.getTime();
           const from = typeof s?.from === "string" ? String(s.from).trim() : "";
           const to = typeof s?.to === "string" ? String(s.to).trim() : "";
-          const label = from || to ? `${from || "?"} → ${to || "?"}` : "이동";
-          out.push({ kind: "usage-expense", startMs, expense: e, label, startText, endText, usageMemo });
+          const fromP = prettifyTransitPlaceName(from);
+          const toP = prettifyTransitPlaceName(to);
+          const label = from || to ? `${fromP || "?"} → ${toP || "?"}` : "이동";
+          out.push({
+            kind: "usage-expense",
+            startMs,
+            expense: e,
+            label,
+            startText,
+            endText,
+            usageMemo,
+            ...(usageTransitMode ? { usageTransitMode } : {})
+          });
         }
       }
       return out;
@@ -1043,7 +1189,9 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
       note: s.note,
       linkedExpenseSum: 0
     }));
-    return [...scheduleItems, ...expenseItems, ...usageExpenseItems].sort((a, b) => a.startMs - b.startMs);
+    return [...scheduleItems, ...expenseItems, ...plannedAtUsageExpenseItems, ...usageExpenseItems].sort(
+      (a, b) => a.startMs - b.startMs
+    );
   }, [todayExpensesDisplay, scheduleData?.items, expensesData?.items, dayKey, dayLocal00]);
 
   const {
@@ -1080,12 +1228,19 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     exInstallmentMonths,
     exInstallmentNoInterest,
     plannedAtEnabled,
-    plannedAtLocal,
+    plannedUsageDayKey,
+    plannedUsageStartText,
+    plannedUsageEndText,
+    plannedUsageTitle,
+    plannedUsageContent,
+    plannedUsageDetail,
+    plannedUsageCompanionsText,
     schedulePeopleText,
     schedulePayTimeText,
     scheduleExpenseTitle,
     scheduleWithExpense,
     scheduleShowOnCalendar,
+    scheduleRepeatYearly,
     scheduleCancelled,
     transit2SegmentsDraft,
     composeDayLocal00,
@@ -1096,7 +1251,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
     setComposeConvertFromScheduleId
   });
 
-  if (!authUser) {
+  if (!sessionReady) {
     return (
       <LoginScreen
         onLogin={(u) => {
@@ -1106,6 +1261,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
             void 0;
           }
           setAuthUser(u);
+          setSessionReady(Boolean(readStoredSessionToken() && decodeAuthSessionPayload(readStoredSessionToken()!)));
         }}
       />
     );
@@ -1198,9 +1354,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
 
   if (calendarOpen) {
     const expensesAll = expensesData?.items ?? [];
-    const monthSchedules = (monthSchedulesData?.items ?? []).filter(
-      (s) => yyyyMmLocal(new Date(s.startAt)) === monthKey
-    );
+    const monthSchedules = monthSchedulesData?.items ?? [];
     return (
       <CalendarView
         headerEl={headerEl}
@@ -1255,7 +1409,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
   if (todayExpenseDetailOpen) {
     const usageTransit2ForDay = (() => {
       const all = expensesData?.items ?? [];
-      const out: Array<{ label: string; startText: string; endText: string; memo: string }> = [];
+      const out: Array<{ label: string; startText: string; endText: string; memo: string; mode?: string }> = [];
       for (const e of all) {
         if (normalizeCategory(e.category) !== "교통2") continue;
         if (!Array.isArray(e.transitSegments) || !e.transitSegments.length) continue;
@@ -1269,12 +1423,25 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
           const label = from || to ? `${from || "?"} → ${to || "?"}`.trim() : "이동";
           const startText = typeof s?.start === "string" ? String(s.start).trim() : "";
           const endText = typeof s?.end === "string" ? String(s.end).trim() : "";
-          const memo = typeof s?.memo === "string" ? String(s.memo).trim() : "";
-          out.push({ label, startText, endText, memo });
+          const memo = transit2UsageMemoForCard(e, s as Record<string, unknown>);
+          const mode = typeof s?.mode === "string" ? String(s.mode).trim() : "";
+          out.push({ label, startText, endText, memo, ...(mode ? { mode } : {}) });
         }
       }
       return out;
     })();
+    const plannedUsageDayRowsForDetail = plannedUsageDaySlices(
+      dayKey,
+      expensesData?.items ?? [],
+      dayLocal00
+    ).map((s) => ({
+      startMs: s.startMs,
+      label: s.label,
+      startText: s.startText,
+      endText: s.endText,
+      memo: s.scheduleMemo,
+      icon: (s.usageTransitMode ?? "").trim() || emojiForCategory(normalizeCategory(s.expense.category || "기타"))
+    }));
     return (
       <>
         <TodayDetailView
@@ -1283,6 +1450,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
           todayExpenses={todayExpensesDisplay}
           schedules={scheduleData?.items ?? []}
           usageTransit2={usageTransit2ForDay}
+          plannedUsageDayRows={plannedUsageDayRowsForDetail}
           budgetUi={budgetUi}
           settlementToday={settlementToday}
           dayKey={dayKey}
@@ -1396,6 +1564,23 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
                 window.alert("카테고리를 선택해줘.");
                 return;
               }
+              const catNormEarly = normalizeCategory(category);
+              if (composeKind === "expense" && catNormEarly !== "교통1") {
+                if (!entryNote.trim()) {
+                  window.alert("내용을 입력해줘.");
+                  return;
+                }
+              }
+              if (composeKind === "schedule") {
+                if (!entryTitle.trim()) {
+                  window.alert("제목을 입력해줘.");
+                  return;
+                }
+                if (!entryNote.trim()) {
+                  window.alert("내용을 입력해줘.");
+                  return;
+                }
+              }
               const derivedTransitTitle = (() => {
                 const catNorm = normalizeCategory(category);
                 if (catNorm === "교통2") {
@@ -1415,12 +1600,11 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
                 }
                 return "";
               })();
-              const title = entryTitle.trim() || derivedTransitTitle;
+              const title =
+                composeKind === "expense" && catNormEarly !== "교통1"
+                  ? entryNote.trim() || derivedTransitTitle
+                  : entryTitle.trim() || derivedTransitTitle;
               if (!title.trim()) {
-                window.alert("내용을 입력해줘.");
-                return;
-              }
-              if (composeKind === "schedule" && !entryNote.trim()) {
                 window.alert("내용을 입력해줘.");
                 return;
               }
@@ -1506,8 +1690,20 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
           setExInstallmentNoInterest={setExInstallmentNoInterest}
           plannedAtEnabled={plannedAtEnabled}
           setPlannedAtEnabled={setPlannedAtEnabled}
-          plannedAtLocal={plannedAtLocal}
-          setPlannedAtLocal={setPlannedAtLocal}
+          plannedUsageDayKey={plannedUsageDayKey}
+          setPlannedUsageDayKey={setPlannedUsageDayKey}
+          plannedUsageStartText={plannedUsageStartText}
+          setPlannedUsageStartText={setPlannedUsageStartText}
+          plannedUsageEndText={plannedUsageEndText}
+          setPlannedUsageEndText={setPlannedUsageEndText}
+          plannedUsageTitle={plannedUsageTitle}
+          setPlannedUsageTitle={setPlannedUsageTitle}
+          plannedUsageContent={plannedUsageContent}
+          setPlannedUsageContent={setPlannedUsageContent}
+          plannedUsageDetail={plannedUsageDetail}
+          setPlannedUsageDetail={setPlannedUsageDetail}
+          plannedUsageCompanionsText={plannedUsageCompanionsText}
+          setPlannedUsageCompanionsText={setPlannedUsageCompanionsText}
           scheduleWithExpense={scheduleWithExpense}
           setScheduleWithExpense={setScheduleWithExpense}
           schedulePayTimeText={schedulePayTimeText}
@@ -1516,6 +1712,8 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
           setSchedulePeopleText={setSchedulePeopleText}
           scheduleShowOnCalendar={scheduleShowOnCalendar}
           setScheduleShowOnCalendar={setScheduleShowOnCalendar}
+          scheduleRepeatYearly={scheduleRepeatYearly}
+          setScheduleRepeatYearly={setScheduleRepeatYearly}
           scheduleExpenseTitle={scheduleExpenseTitle}
           setScheduleExpenseTitle={setScheduleExpenseTitle}
           transitLegs={transitLegs}
@@ -1601,11 +1799,12 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
       {expenseDetailOpen ? (
         <ExpenseDetailSheet
           expense={expenseDetailOpen}
-          title={expenseDetailTitle(expenseDetailOpen)}
+          title={expenseDetailTitle(expenseDetailOpen, dayKey)}
           subtitle={expenseDetailSubtitle(expenseDetailOpen, dayLocal00)}
           onClose={() => setExpenseDetailOpen(null)}
           isNetSettledForDay={isNetSettledForDay}
           requestToggleNetSettledForDay={requestToggleNetSettledForDay}
+          viewerDayKey={dayKey}
           footer={
             <div className="flex gap-3">
               <button
@@ -1635,11 +1834,16 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
               <button
                 type="button"
                 className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm"
-                onClick={async () => {
-                  const id = expenseDetailOpen.id;
-                  requestConfirm('기록이 사라집니다. 삭제하시겠습니까?', async () => {
-                    await deleteExpense.mutateAsync(id);
-                    setExpenseDetailOpen(null);
+                onClick={() => {
+                  const id = expensePersistedId(expenseDetailOpen);
+                  requestConfirm("기록이 사라집니다. 삭제하시겠습니까?", async () => {
+                    try {
+                      await deleteExpense.mutateAsync(id);
+                      setExpenseDetailOpen(null);
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      window.alert(`삭제에 실패했어요.\n${msg}`);
+                    }
                   });
                 }}
               >
@@ -1705,11 +1909,16 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
               <button
                 type="button"
                 className="flex-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm"
-                onClick={async () => {
+                onClick={() => {
                   const id = scheduleDetailOpen.id;
                   requestConfirm("기록이 사라집니다. 삭제하시겠습니까?", async () => {
-                    await deleteSchedule.mutateAsync(id);
-                    setScheduleDetailOpen(null);
+                    try {
+                      await deleteSchedule.mutateAsync(id);
+                      setScheduleDetailOpen(null);
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      window.alert(`삭제에 실패했어요.\n${msg}`);
+                    }
                   });
                 }}
               >
@@ -1723,7 +1932,7 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
 
       {/* Confirm dialog */}
       {confirmOpen ? (
-        <div className="fixed inset-0 z-[80]">
+        <div className="fixed inset-0 z-[95]">
           <button
             className="absolute inset-0 bg-black/60"
             onClick={() => setConfirmOpen(null)}

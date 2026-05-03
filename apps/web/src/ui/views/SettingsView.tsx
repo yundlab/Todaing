@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate } from "react-router-dom";
 import { yyyyMmLocal } from "@/domain/date";
 import {
@@ -14,13 +15,20 @@ import { cn } from "@/components/cn";
 import { fieldBorderClass } from "@/components/inputFieldClasses";
 import { parseAmountInput } from "@/domain/parseAmountInput";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
-import { AUTH_USER_LS_KEY } from "@/lib/auth";
+import {
+  AUTH_SESSION_LS_KEY,
+  AUTH_USER_LS_KEY,
+  decodeAuthSessionPayload,
+  readStoredSessionToken
+} from "@/lib/auth";
 
 export default function SettingsView() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [hasAuth] = useState(() => {
     try {
-      return Boolean(window.localStorage.getItem(AUTH_USER_LS_KEY));
+      const t = readStoredSessionToken();
+      return Boolean(t && decodeAuthSessionPayload(t));
     } catch {
       return false;
     }
@@ -72,10 +80,12 @@ export default function SettingsView() {
 
   const logout = () => {
     try {
+      window.localStorage.removeItem(AUTH_SESSION_LS_KEY);
       window.localStorage.removeItem(AUTH_USER_LS_KEY);
     } catch {
       void 0;
     }
+    void queryClient.clear();
     navigate("/", { replace: true });
   };
 

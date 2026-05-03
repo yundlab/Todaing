@@ -14,6 +14,7 @@ const CATEGORY_TINT_OVERRIDE: Record<string, CategoryTint> = {
   생활: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-900" },
   병원: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-900" },
   선물: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-900" },
+  여행: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-900" },
   god: { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-900" },
   PPTNZ: { bg: "bg-green-50", border: "border-green-200", text: "text-green-900" },
   안재현: { bg: "bg-slate-900", border: "border-slate-900", text: "text-white" },
@@ -27,7 +28,7 @@ function groupForCategory(category: string) {
   if (["교통1", "교통2", "통신", "보험"].includes(category)) return "fixed";
   if (["식사", "간식"].includes(category)) return "food";
   if (["담배", "구독"].includes(category)) return "optionalFixed";
-  if (["생활", "병원", "선물"].includes(category)) return "living";
+  if (["생활", "여행", "병원", "선물"].includes(category)) return "living";
   return "other";
 }
 

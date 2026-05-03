@@ -18,6 +18,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   담배: "🪄",
   구독: "💸",
   생활: "🛍️",
+  여행: "🧳",
   병원: "🩺",
   선물: "🎁",
   god: "🩵",
@@ -27,7 +28,8 @@ const CATEGORY_EMOJI: Record<string, string> = {
   영화: "🎬",
   뮤지컬: "💎",
   "공연/전시": "✨",
-  기타: "📍"
+  기타: "📍",
+  교회: "⛪️"
 };
 
 const EMOJI_TO_CATEGORY = Object.fromEntries(
@@ -38,10 +40,10 @@ export const CATEGORY_GROUPS: Array<{ label: string; items: string[] }> = [
   { label: "필수 고정비", items: ["교통1", "교통2", "통신", "보험"] },
   { label: "식음료", items: ["식사", "간식"] },
   { label: "선택 고정비", items: ["담배", "구독"] },
-  { label: "생활", items: ["생활", "병원", "선물"] },
+  { label: "생활", items: ["생활", "병원", "여행", "선물"] },
   { label: "덕질", items: ["god", "PPTNZ", "안재현", "덕질"] },
   { label: "문화", items: ["영화", "뮤지컬", "공연/전시"] },
-  { label: "기타", items: ["기타"] }
+  { label: "기타", items: ["기타", "교회"] }
 ];
 
 export const ALL_CATEGORIES = Array.from(new Set(CATEGORY_GROUPS.flatMap((g) => g.items)));
