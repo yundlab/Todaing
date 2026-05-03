@@ -7,7 +7,7 @@ import {
   listExpenses,
   updateExpense,
   type ExpenseListResponse
-} from "./api";
+} from "@/features/expenses/api";
 
 const EXPENSE_QUERY_KEYS = [
   ["expenses"],
@@ -19,26 +19,32 @@ async function invalidateExpenseQueries(qc: QueryClient) {
   await Promise.all(EXPENSE_QUERY_KEYS.map((queryKey) => qc.invalidateQueries({ queryKey })));
 }
 
-export function useExpenses() {
+export function useExpenses(opts?: { enabled?: boolean }) {
+  const enabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: ["expenses"],
     queryFn: listExpenses,
+    enabled,
     // 리패치 중에도 이전 목록 유지 → 방금 등록한 지출 카드가 비었다가 사라지는 느낌 완화
     placeholderData: (previousData) => previousData
   });
 }
 
-export function useExpenseSummary(day: string) {
+export function useExpenseSummary(day: string, opts?: { enabled?: boolean }) {
+  const enabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: ["expenses", "summary", day],
-    queryFn: () => getExpenseSummary(day)
+    queryFn: () => getExpenseSummary(day),
+    enabled
   });
 }
 
-export function useMonthlyExpenseSummary(month: string) {
+export function useMonthlyExpenseSummary(month: string, opts?: { enabled?: boolean }) {
+  const enabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: ["expenses", "monthlySummary", month],
-    queryFn: () => getMonthlyExpenseSummary(month)
+    queryFn: () => getMonthlyExpenseSummary(month),
+    enabled
   });
 }
 
@@ -82,6 +88,12 @@ export function useDeleteExpense() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteExpense(id),
-    onSuccess: () => invalidateExpenseQueries(qc)
+    onSuccess: (_void, id) => {
+      qc.setQueryData<ExpenseListResponse>(["expenses"], (old) => {
+        if (!old?.items?.length) return old;
+        return { items: old.items.filter((e) => e.id !== id) };
+      });
+      void invalidateExpenseQueries(qc);
+    }
   });
 }

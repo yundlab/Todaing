@@ -1,4 +1,4 @@
-import { cn } from "./cn";
+import { cn } from "@/components/cn";
 
 function MarkSvg({ className }: { className: string }) {
   return (

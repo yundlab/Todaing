@@ -1,8 +1,6 @@
-import { CalendarIcon, calendarPickerIndicatorOverlayClasses } from "./DateMonthInput";
-
-function cn(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
+import { CalendarIcon, calendarPickerIndicatorOverlayClasses } from "@/components/DateMonthInput";
+import { cn } from "@/components/cn";
+import { fieldBorderClass } from "@/components/inputFieldClasses";
 
 export type SettlementLogOpen = {
   day: string;
@@ -63,7 +61,8 @@ export default function SettlementRecordDialog(props: {
                   value={props.paidAtLocal}
                   onChange={(e) => props.onPaidAtLocalChange(e.target.value)}
                   className={cn(
-                    "box-border w-full min-w-0 rounded-xl border border-slate-200 bg-white py-3 pl-3 pr-12 text-sm text-slate-900 outline-none focus:border-slate-400",
+                    "box-border w-full min-w-0 rounded-xl bg-white py-3 pl-3 pr-12 text-sm text-slate-900",
+                    fieldBorderClass(),
                     calendarPickerIndicatorOverlayClasses
                   )}
                 />
@@ -79,7 +78,7 @@ export default function SettlementRecordDialog(props: {
                 value={props.method}
                 onChange={(e) => props.onMethodChange(e.target.value)}
                 placeholder="예) 카뱅 / 토스 / 신한 / 현금"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                className={cn("mt-1 w-full rounded-xl bg-white px-3 py-3 text-sm text-slate-900", fieldBorderClass())}
               />
             </label>
 
@@ -89,7 +88,7 @@ export default function SettlementRecordDialog(props: {
                 value={props.note}
                 onChange={(e) => props.onNoteChange(e.target.value)}
                 placeholder="예) 토스 / 카뱅 / 현금으로 줌"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                className={cn("mt-1 w-full rounded-xl bg-white px-3 py-3 text-sm text-slate-900", fieldBorderClass())}
               />
             </label>
           </div>

@@ -1,21 +1,21 @@
 import type { ReactNode } from "react";
-import type { Expense } from "../features/expenses/api";
-import type { ScheduleItem } from "../features/schedules/api";
-import { yyyyMmDdLocal, yyyyMmLocal } from "../domain/date";
+import type { Expense } from "@/features/expenses/api";
+import type { ScheduleItem } from "@/features/schedules/api";
+import { yyyyMmDdLocal, yyyyMmLocal } from "@/domain/date";
 import {
   CATEGORY_GROUPS,
   emojiForCategory,
   GROUP_LABEL_STYLE,
   normalizeCategory
-} from "../domain/categoryUi";
-import { formatWon, myShareAmountForMe, settlementDeltaForMe } from "../domain/settlement";
+} from "@/domain/categoryUi";
+import { formatWon, myShareAmountForMe } from "@/domain/settlement";
 import {
   expenseCashflowAllocations,
   expenseCashflowAllocationsForMe,
   sumExpensesForMonth,
   type AggregateMode
-} from "../domain/installment";
-import SettlementRow from "../components/SettlementRow";
+} from "@/domain/installment";
+import SettlementRow from "@/components/SettlementRow";
 
 export type MonthDetailViewProps = {
   header: ReactNode;
@@ -110,18 +110,14 @@ export function MonthDetailView({
     amount: rows.reduce((a, r) => a + r.amount, 0)
   });
 
+  // "정산 현황"은 expense 기반으로 다시 계산하면(특히 scope/집계모드에 따라)
+  // 실제 정산 데이터(settlementAllByDay)와 불일치가 쉽게 발생한다.
+  // monthKey 기준으로 settlementAllByDay를 필터링해서 그대로 노출한다.
   const settlementByDay = new Map<string, Map<string, number>>();
-  for (const row of dayRows) {
-    const perPerson = new Map<string, number>();
-    for (const e of monthItems) {
-      if (yyyyMmDdLocal(new Date(e.occurredAt)) !== row.day) continue;
-      if (e.scope !== "SHARED") continue;
-      const d = settlementDeltaForMe(e, me);
-      for (const [name, amt] of d.perPerson.entries()) {
-        perPerson.set(name, (perPerson.get(name) ?? 0) + amt);
-      }
-    }
-    if (perPerson.size) settlementByDay.set(row.day, perPerson);
+  for (const [day, perPerson] of settlementAllByDay.entries()) {
+    if (yyyyMmLocal(new Date(`${day}T00:00:00`)) !== monthKey) continue;
+    if (!perPerson?.size) continue;
+    settlementByDay.set(day, perPerson);
   }
 
   const monthSchedules = (schedules ?? []).filter((s) => yyyyMmLocal(new Date(s.startAt)) === monthKey);

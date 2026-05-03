@@ -1,12 +1,12 @@
-import type { Expense, ExpenseCreateInput } from "../features/expenses/api";
-import type { ScheduleItem, ScheduleCreateInput } from "../features/schedules/api";
-import { parseFlexibleTimeToMinutes } from "../domain/time";
-import { dateFromSlotMinutes } from "../domain/date";
-import { normalizeCategory, emojiForCategory } from "../domain/categoryUi";
-import { buildTransitPayload, type TransitLeg, type Transit2SegmentDraft } from "../domain/transitPayload";
-import { encodeScheduleNote } from "../domain/scheduleNote";
-import { parseAmountInput } from "../domain/parseAmountInput";
-import { sharedParticipantsAll } from "../domain/settlement";
+import type { Expense, ExpenseCreateInput } from "@/features/expenses/api";
+import type { ScheduleItem, ScheduleCreateInput } from "@/features/schedules/api";
+import { parseFlexibleTimeToMinutes } from "@/domain/time";
+import { dateFromSlotMinutes } from "@/domain/date";
+import { normalizeCategory, emojiForCategory } from "@/domain/categoryUi";
+import { buildTransitPayload, type TransitLeg, type Transit2SegmentDraft } from "@/domain/transitPayload";
+import { encodeScheduleNote } from "@/domain/scheduleNote";
+import { parseAmountInput } from "@/domain/parseAmountInput";
+import { sharedSplitMemberNames } from "@/domain/settlement";
 
 export type ComposeSubmitArgs = {
   category: string;
@@ -35,6 +35,25 @@ function installmentPayload(
     return { installment: false, installmentMonths: null, installmentNoInterest: false };
   }
   return { installment: true, installmentMonths: m, installmentNoInterest: noInterest };
+}
+
+function splitCommaNames(csv: string): string[] {
+  return Array.from(new Set(csv.split(",").map((s) => s.trim()).filter(Boolean)));
+}
+
+/** 공동: N분의1 멤버만 저장(결제자는 `paymentOwner`). 개인: 동행만 JSON 배열로 저장(선택). */
+function buildExpenseParticipantsForSave(
+  expenseScope: "PERSONAL" | "SHARED",
+  payerName: string,
+  sharedNamesText: string,
+  expenseCompanionsText: string
+): string[] | null {
+  if (expenseScope === "SHARED") {
+    const names = sharedSplitMemberNames(payerName, splitCommaNames(sharedNamesText));
+    return names.length ? names : null;
+  }
+  const companions = splitCommaNames(expenseCompanionsText);
+  return companions.length ? companions : null;
 }
 
 /** Compose 시트의 폼 state·변환자·뮤테이션을 받아 4가지 저장 흐름을 노출한다. */
@@ -67,16 +86,25 @@ export type UseComposeSubmitDeps = {
   payerOther: string;
   expenseScope: "PERSONAL" | "SHARED";
   sharedNamesText: string;
+  expenseCompanionsText: string;
   exInstallment: boolean;
   exInstallmentMonths: number;
   exInstallmentNoInterest: boolean;
   plannedAtEnabled: boolean;
-  plannedAtLocal: string;
+  plannedUsageDayKey: string;
+  plannedUsageStartText: string;
+  plannedUsageEndText: string;
+  plannedUsageTitle: string;
+  plannedUsageContent: string;
+  plannedUsageDetail: string;
+  plannedUsageCompanionsText: string;
   schedulePeopleText: string;
   schedulePayTimeText: string;
   scheduleExpenseTitle: string;
   scheduleWithExpense: boolean;
   scheduleShowOnCalendar: boolean;
+  scheduleRepeatYearly: boolean;
+  scheduleCancelled: boolean;
   transit2SegmentsDraft: Transit2SegmentDraft[];
   composeDayLocal00: Date;
   composeEditExpenseId: string | null;
@@ -115,16 +143,25 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     payerOther,
     expenseScope,
     sharedNamesText,
+    expenseCompanionsText,
     exInstallment,
     exInstallmentMonths,
     exInstallmentNoInterest,
     plannedAtEnabled,
-    plannedAtLocal,
+    plannedUsageDayKey,
+    plannedUsageStartText,
+    plannedUsageEndText,
+    plannedUsageTitle,
+    plannedUsageContent,
+    plannedUsageDetail,
+    plannedUsageCompanionsText,
     schedulePeopleText,
     schedulePayTimeText,
     scheduleExpenseTitle,
     scheduleWithExpense,
     scheduleShowOnCalendar,
+    scheduleRepeatYearly,
+    scheduleCancelled,
     transit2SegmentsDraft,
     composeDayLocal00,
     composeEditExpenseId,
@@ -134,14 +171,107 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     setComposeConvertFromScheduleId
   } = deps;
 
-  /** datetime-local 입력값을 ISO 문자열로 변환. 토글 OFF거나 빈 값이면 null. */
-  function buildPlannedAtIso(): string | null {
-    if (!plannedAtEnabled) return null;
-    const trimmed = plannedAtLocal.trim();
-    if (!trimmed) return null;
-    const d = new Date(trimmed);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString();
+  type PlannedUsageFields = {
+    plannedAt: string | null;
+    plannedEndAt: string | null;
+    plannedMemo: string | null;
+    plannedContent: string | null;
+    plannedDetail: string | null;
+    plannedCompanionsText: string | null;
+  };
+
+  /** 다른 날 사용 OFF → 전부 null. ON → 검증 후 ISO·문자열. 검증 실패 시 null. */
+  function buildPlannedUsageFields(): PlannedUsageFields | null {
+    if (!plannedAtEnabled) {
+      return {
+        plannedAt: null,
+        plannedEndAt: null,
+        plannedMemo: null,
+        plannedContent: null,
+        plannedDetail: null,
+        plannedCompanionsText: null
+      };
+    }
+    const day = plannedUsageDayKey.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      window.alert("다른 날 사용의 사용일을 선택해줘.");
+      return null;
+    }
+    const startMin = parseFlexibleTimeToMinutes(plannedUsageStartText);
+    if (startMin == null) {
+      window.alert("다른 날 사용의 시작 시간을 입력해줘.");
+      return null;
+    }
+    const memoFallback = entryNote.trim();
+    const pTitle = plannedUsageTitle.trim() || memoFallback;
+    if (!pTitle) {
+      window.alert("다른 날 사용의 제목을 입력해줘. (위쪽 결제 내용을 채우면 같이 반영돼요.)");
+      return null;
+    }
+    const pContent = plannedUsageContent.trim() || memoFallback;
+    if (!pContent) {
+      window.alert("다른 날 사용의 내용을 입력해줘. (위쪽 결제 내용을 채우면 같이 반영돼요.)");
+      return null;
+    }
+    const dayLocal = new Date(`${day}T00:00:00`);
+    if (Number.isNaN(dayLocal.getTime())) {
+      window.alert("다른 날 사용의 날짜를 확인해줘.");
+      return null;
+    }
+    const plannedAt = dateFromSlotMinutes(dayLocal, startMin).toISOString();
+    let plannedEndAt: string | null = null;
+    const endRaw = plannedUsageEndText.trim();
+    if (endRaw) {
+      const endMin = parseFlexibleTimeToMinutes(endRaw);
+      if (endMin == null) {
+        window.alert("다른 날 사용의 끝 시간 형식을 확인해줘.");
+        return null;
+      }
+      if (!(startMin < endMin)) {
+        window.alert("다른 날 사용: 끝 시간은 시작보다 늦아야 해.");
+        return null;
+      }
+      plannedEndAt = dateFromSlotMinutes(dayLocal, endMin).toISOString();
+    }
+    return {
+      plannedAt,
+      plannedEndAt,
+      plannedMemo: pTitle,
+      plannedContent: pContent,
+      plannedDetail: plannedUsageDetail.trim() ? plannedUsageDetail.trim() : null,
+      plannedCompanionsText: plannedUsageCompanionsText.trim()
+        ? plannedUsageCompanionsText.trim()
+        : null
+    };
+  }
+
+  /** 교통1: 각 구간 금액 합산. 그 외: 시트 상단 금액 입력 */
+  function parseResolvedExpenseAmount(catNorm: string): number | null {
+    if (catNorm === "교통1") {
+      if (!transitLegs.length) {
+        window.alert("교통 구간이 없어요.");
+        return null;
+      }
+      let sum = 0;
+      for (let i = 0; i < transitLegs.length; i++) {
+        const raw = String((transitLegs[i] as { amount?: string }).amount ?? "").trim();
+        const parsed = raw === "" ? 0 : parseAmountInput(raw);
+        if (parsed == null) {
+          window.alert(`구간 ${i + 1} 금액은 숫자로 입력해줘. (예: 12000 또는 12,000, 0)`);
+          return null;
+        }
+        sum += parsed;
+      }
+      return sum;
+    }
+    const trimmed = exAmount.trim();
+    if (trimmed === "") return 0;
+    const amount = parseAmountInput(exAmount);
+    if (amount == null) {
+      window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000, 0)");
+      return null;
+    }
+    return amount;
   }
 
   async function submitEditSchedule(args: ComposeSubmitArgs) {
@@ -181,7 +311,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         .trim();
     const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
     const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
-    const note = encodeScheduleNote(schedulePeopleText, mergedNote, exDetail);
+    const note = encodeScheduleNote(schedulePeopleText, mergedNote, exDetail, Boolean(scheduleCancelled));
     try {
       await updateSchedule({
         id: composeEditScheduleId,
@@ -190,7 +320,8 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
           endAt,
           title: scheduleTitle,
           note,
-          showOnCalendar: scheduleShowOnCalendar
+          showOnCalendar: scheduleShowOnCalendar,
+          repeatYearly: scheduleRepeatYearly
         }
       });
     } catch (err) {
@@ -202,13 +333,10 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     // 일정 수정에서도 "비용도 함께 기록"을 켜면 지출을 생성
     // (일정-지출 연결은 occurredAt 기준 자동 연결 로직을 사용)
     if (scheduleWithExpense) {
-      const amount = parseAmountInput(exAmount);
-      if (amount == null) {
-        window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
-        return;
-      }
+      const amount = parseResolvedExpenseAmount(catNorm);
+      if (amount == null) return;
       const merchantTrim = exMerchant.trim();
-      if (!merchantTrim) {
+      if (catNorm !== "교통1" && !merchantTrim) {
         window.alert("결제처를 입력해줘.");
         return;
       }
@@ -252,21 +380,17 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
 
       const payerName =
         payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
-      const participants =
-        expenseScope === "SHARED"
-          ? Array.from(
-              new Set(
-                sharedNamesText
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              )
-            )
-          : null;
-      const participantsAll =
-        expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+      const participantsSaved = buildExpenseParticipantsForSave(
+        expenseScope,
+        payerName,
+        sharedNamesText,
+        expenseCompanionsText
+      );
 
-      const merchantFinal = merchantTrim;
+      const merchantFinal = merchantTrim ? merchantTrim : null;
+
+      const plannedFields = buildPlannedUsageFields();
+      if (plannedFields === null) return;
 
       try {
         await createExpense({
@@ -275,6 +399,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
           amount,
           category: catNorm,
           merchant: merchantFinal,
+          subject: null,
           detail: exDetail.trim() ? exDetail.trim() : null,
           memo: expenseTitleTrim,
           paymentType: exPaymentType,
@@ -288,8 +413,8 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
             exInstallmentNoInterest
           ),
           scope: expenseScope,
-          participants: participantsAll,
-          plannedAt: buildPlannedAtIso(),
+          participants: participantsSaved,
+          ...plannedFields,
           ...transitPayload,
           ...(catNorm === "교통2"
             ? {
@@ -311,22 +436,23 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
   }
 
   async function submitEditExpense(args: ComposeSubmitArgs) {
-    if (!composeEditExpenseId) return;
+    if (!composeEditExpenseId) {
+      window.alert("수정 정보를 불러오지 못했어요. 시트를 닫고 상세에서 다시 「수정」을 눌러주세요.");
+      return;
+    }
     const { category, title, startMin } = args;
+    const catNorm = normalizeCategory(category);
     if (exPaymentType === "ETC" && !exPaymentLabel.trim()) {
       window.alert("기타 결제수단 이름을 입력해줘.");
       return;
     }
     const merchantTrim = exMerchant.trim();
-    if (!merchantTrim) {
+    if (catNorm !== "교통1" && !merchantTrim) {
       window.alert("결제처를 입력해줘.");
       return;
     }
-    const parsedAmount = parseAmountInput(exAmount);
-    if (parsedAmount == null) {
-      window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
-      return;
-    }
+    const parsedAmount = parseResolvedExpenseAmount(catNorm);
+    if (parsedAmount == null) return;
     const endMinParsed = entryEndText.trim()
       ? parseFlexibleTimeToMinutes(entryEndText)
       : null;
@@ -338,23 +464,16 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     const occurredAt = dateFromSlotMinutes(composeDayLocal00, startMin).toISOString();
     const endAt =
       endMin != null ? dateFromSlotMinutes(composeDayLocal00, endMin).toISOString() : null;
-    const catNorm = normalizeCategory(category);
     const payerName =
       payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
-    const participants =
-      expenseScope === "SHARED"
-        ? Array.from(
-            new Set(
-              sharedNamesText
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            )
-          )
-        : null;
-    const participantsAll =
-      expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
-    const memoText = title.trim();
+    const participantsSaved = buildExpenseParticipantsForSave(
+      expenseScope,
+      payerName,
+      sharedNamesText,
+      expenseCompanionsText
+    );
+    const memoText = catNorm === "교통1" ? title.trim() : entryNote.trim();
+    const subjectVal = null;
     const detailOnly = exDetail.trim();
     const transitPayload = buildTransitPayload(catNorm, {
       legs: transitLegs,
@@ -379,6 +498,8 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
             memo: s.memoText?.trim() ? s.memoText.trim() : null
           }))
         : null;
+    const plannedFieldsEdit = buildPlannedUsageFields();
+    if (plannedFieldsEdit === null) return;
     try {
       await updateExpense({
         id: composeEditExpenseId,
@@ -396,8 +517,9 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
                 : null,
           paymentOwner: payerName,
           scope: expenseScope,
-          participants: participantsAll,
+          participants: participantsSaved,
           merchant: merchantTrim ? merchantTrim : null,
+          subject: subjectVal,
           detail: detailOnly ? detailOnly : null,
           memo: memoText ? memoText : null,
           ...installmentPayload(
@@ -406,7 +528,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
             exInstallmentMonths,
             exInstallmentNoInterest
           ),
-          plannedAt: buildPlannedAtIso(),
+          ...plannedFieldsEdit,
           ...transitPayload,
           ...(catNorm === "교통2"
             ? {
@@ -484,7 +606,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         .trim();
     const baseNote = stripTransit2Line(entryNote.trim() ? entryNote.trim() : "");
     const mergedNote = baseNote + (transitMemo ? (baseNote ? "\n" : "") + transitMemo : "");
-    const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote, exDetail);
+    const scheduleNote = encodeScheduleNote(schedulePeopleText, mergedNote, exDetail, Boolean(scheduleCancelled));
 
     try {
       await createSchedule({
@@ -492,7 +614,8 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
         endAt,
         title: scheduleTitle,
         note: scheduleNote,
-        showOnCalendar: scheduleShowOnCalendar
+        showOnCalendar: scheduleShowOnCalendar,
+        repeatYearly: scheduleRepeatYearly
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -501,13 +624,10 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     }
 
     if (scheduleWithExpense) {
-      const amount = parseAmountInput(exAmount);
-      if (amount == null) {
-        window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
-        return;
-      }
+      const amount = parseResolvedExpenseAmount(catNorm);
+      if (amount == null) return;
       const merchantTrim = exMerchant.trim();
-      if (!merchantTrim) {
+      if (catNorm !== "교통1" && !merchantTrim) {
         window.alert("결제처를 입력해줘.");
         return;
       }
@@ -535,7 +655,6 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
           toText: exTransitToText
         }
       });
-      const catNorm = normalizeCategory(category);
       const transit2SegmentsPayload =
         catNorm === "교통2"
           ? transit2SegmentsDraft.map((s) => ({
@@ -553,21 +672,17 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
       const payerName =
         payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
 
-      const participants =
-        expenseScope === "SHARED"
-          ? Array.from(
-              new Set(
-                sharedNamesText
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              )
-            )
-          : null;
-      const participantsAll =
-        expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+      const participantsSaved = buildExpenseParticipantsForSave(
+        expenseScope,
+        payerName,
+        sharedNamesText,
+        expenseCompanionsText
+      );
 
-      const merchantFinal = merchantTrim;
+      const merchantFinal = merchantTrim ? merchantTrim : null;
+
+      const plannedFieldsNewSched = buildPlannedUsageFields();
+      if (plannedFieldsNewSched === null) return;
 
       try {
         await createExpense({
@@ -576,6 +691,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
           amount,
           category,
           merchant: merchantFinal,
+          subject: null,
           detail: exDetail.trim() ? exDetail.trim() : null,
           memo: expenseTitleTrim,
           paymentType: exPaymentType,
@@ -589,8 +705,8 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
             exInstallmentNoInterest
           ),
           scope: expenseScope,
-          participants: participantsAll,
-          plannedAt: buildPlannedAtIso(),
+          participants: participantsSaved,
+          ...plannedFieldsNewSched,
           ...transitPayload,
           ...(catNorm === "교통2"
             ? {
@@ -617,6 +733,7 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
 
   async function submitNewExpense(args: ComposeSubmitArgs) {
     const { category, title, startMin, convertFromScheduleId } = args;
+    const catNorm = normalizeCategory(category);
     const endRequired = false;
     const endMinParsed = entryEndText.trim()
       ? parseFlexibleTimeToMinutes(entryEndText)
@@ -649,16 +766,13 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     }
 
     const merchantTrim = exMerchant.trim();
-    if (!merchantTrim) {
+    if (catNorm !== "교통1" && !merchantTrim) {
       window.alert("결제처를 입력해줘.");
       return;
     }
 
-    const amount = parseAmountInput(exAmount);
-    if (amount == null) {
-      window.alert("금액은 숫자로 입력해줘. (예: 12000 또는 12,000)");
-      return;
-    }
+    const amount = parseResolvedExpenseAmount(catNorm);
+    if (amount == null) return;
 
     const transitPayload = buildTransitPayload(entryCategory, {
       legs: transitLegs,
@@ -674,30 +788,28 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
     const payerName =
       payerPreset === "나" ? "나" : payerOther.trim() ? payerOther.trim() : "기타";
 
-    const participants =
-      expenseScope === "SHARED"
-        ? Array.from(
-            new Set(
-              sharedNamesText
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            )
-          )
-        : null;
-    const participantsAll =
-      expenseScope === "SHARED" ? sharedParticipantsAll(payerName, participants) : null;
+    const participantsSaved = buildExpenseParticipantsForSave(
+      expenseScope,
+      payerName,
+      sharedNamesText,
+      expenseCompanionsText
+    );
 
-    const memoText = title.trim();
+    const memoText = catNorm === "교통1" ? title.trim() : entryNote.trim();
+    const subjectVal = null;
     const detailOnly = exDetail.trim();
+
+    const plannedFieldsNew = buildPlannedUsageFields();
+    if (plannedFieldsNew === null) return;
 
     try {
       await createExpense({
         occurredAt: startAt,
         endAt,
         amount,
-        category,
+        category: catNorm,
         merchant: merchantTrim ? merchantTrim : null,
+        subject: subjectVal,
         detail: detailOnly ? detailOnly : null,
         memo: memoText ? memoText : null,
         paymentType: exPaymentType,
@@ -711,8 +823,8 @@ export function useComposeSubmit(deps: UseComposeSubmitDeps) {
           exInstallmentNoInterest
         ),
         scope: expenseScope,
-        participants: participantsAll,
-        plannedAt: buildPlannedAtIso(),
+        participants: participantsSaved,
+        ...plannedFieldsNew,
         ...transitPayload
       });
     } catch (err) {

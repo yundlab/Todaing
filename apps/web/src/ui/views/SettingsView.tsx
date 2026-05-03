@@ -1,24 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate } from "react-router-dom";
-import { yyyyMmLocal } from "../domain/date";
+import { yyyyMmLocal } from "@/domain/date";
 import {
   effectiveMonthlyBudgetWon,
   MONTHLY_BUDGET_BY_YM_LS_KEY,
   parseMonthlyBudgetByYm,
   readLegacyMonthlyBudgetWonFromStorage,
   serializeMonthlyBudgetByYm
-} from "../domain/monthlyBudgetStorage";
-import BottomNav from "../components/BottomNav";
-import DateMonthInput from "../components/DateMonthInput";
-import { parseAmountInput } from "../domain/parseAmountInput";
-import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { AUTH_USER_LS_KEY } from "../lib/auth";
+} from "@/domain/monthlyBudgetStorage";
+import BottomNav from "@/components/BottomNav";
+import DateMonthInput from "@/components/DateMonthInput";
+import { cn } from "@/components/cn";
+import { fieldBorderClass } from "@/components/inputFieldClasses";
+import { parseAmountInput } from "@/domain/parseAmountInput";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import {
+  AUTH_SESSION_LS_KEY,
+  AUTH_USER_LS_KEY,
+  decodeAuthSessionPayload,
+  readStoredSessionToken
+} from "@/lib/auth";
 
-export default function SettingsPage() {
+export default function SettingsView() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [hasAuth] = useState(() => {
     try {
-      return Boolean(window.localStorage.getItem(AUTH_USER_LS_KEY));
+      const t = readStoredSessionToken();
+      return Boolean(t && decodeAuthSessionPayload(t));
     } catch {
       return false;
     }
@@ -70,10 +80,12 @@ export default function SettingsPage() {
 
   const logout = () => {
     try {
+      window.localStorage.removeItem(AUTH_SESSION_LS_KEY);
       window.localStorage.removeItem(AUTH_USER_LS_KEY);
     } catch {
       void 0;
     }
+    void queryClient.clear();
     navigate("/", { replace: true });
   };
 
@@ -125,7 +137,7 @@ export default function SettingsPage() {
                   const v = e.target.value;
                   if (v) setEditMonthYm(v);
                 }}
-                className="font-mono text-base font-semibold tabular-nums text-slate-900 focus:border-indigo-400"
+                className="font-mono text-base font-semibold tabular-nums text-slate-900"
               />
             </div>
             <label className="block">
@@ -166,7 +178,10 @@ export default function SettingsPage() {
                   setBudgetByYm((prev) => ({ ...prev, [editMonthYm]: parsed }));
                   setBudgetDraft(parsed.toLocaleString("ko-KR"));
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-right font-mono text-base font-semibold tabular-nums tracking-tight text-slate-900 outline-none focus:border-slate-400"
+                className={cn(
+                  "w-full rounded-xl bg-white px-3 py-3 text-right font-mono text-base font-semibold tabular-nums tracking-tight text-slate-900",
+                  fieldBorderClass()
+                )}
               />
             </label>
             <p className="mt-3 text-xs text-slate-500">

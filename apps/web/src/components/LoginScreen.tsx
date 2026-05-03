@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { config } from "../lib/config";
-import { safeParseJwtPayload, type AuthUser } from "../lib/auth";
-import TodaingLogoMark from "./TodaingLogoMark";
+import { config } from "@/lib/config";
+import { AUTH_SESSION_LS_KEY, safeParseJwtPayload, type AuthUser } from "@/lib/auth";
+import TodaingLogoMark from "@/components/TodaingLogoMark";
 
 declare global {
   // eslint-disable-next-line no-unused-vars
@@ -110,14 +110,37 @@ export default function LoginScreen({
             ux_mode: "redirect",
             login_uri: loginUri,
             callback: (resp) => {
-              const user = payloadToAuthUser(
-                resp?.credential ? safeParseJwtPayload(resp.credential) : null
-              );
-              if (!user) {
-                setError("로그인 정보를 가져오지 못했어요.");
-                return;
-              }
-              onLoginRef.current(user);
+              void (async () => {
+                const user = payloadToAuthUser(
+                  resp?.credential ? safeParseJwtPayload(resp.credential) : null
+                );
+                if (!user) {
+                  setError("로그인 정보를 가져오지 못했어요.");
+                  return;
+                }
+                if (resp?.credential) {
+                  try {
+                    const r = await fetch(
+                      `${config.apiBaseUrl.replace(/\/$/, "")}/api/auth/session`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ credential: resp.credential })
+                      }
+                    );
+                    if (!r.ok) {
+                      setError("세션 발급에 실패했어요.");
+                      return;
+                    }
+                    const j = (await r.json()) as { token?: string };
+                    if (j.token) window.localStorage.setItem(AUTH_SESSION_LS_KEY, j.token);
+                  } catch {
+                    setError("세션 발급에 실패했어요.");
+                    return;
+                  }
+                }
+                onLoginRef.current(user);
+              })();
             }
           });
           window.__gsiInitialized = true;

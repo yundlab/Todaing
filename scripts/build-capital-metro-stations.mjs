@@ -2,6 +2,9 @@
  * 수도권 전철 역 목록 생성 (검색용).
  * 원본: https://github.com/chanyou/open-seoul-subway/blob/master/station_code.csv
  * 노선명은 external_code·내부코드 규칙으로 추론(일부 광역·국철은 넓게 묶음).
+ *
+ * CSV에 없는 **수도권 광역급행철도 A노선(GTX-A)** 은 아래에서 수동 병합합니다.
+ * (참고: 국토부 고시·위키 등 — 남북 직결 전 구간은 공사·개통 시점에 맞춰 조정)
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,18 +22,34 @@ function lineForRow(extRaw, _metroRaw) {
   if (c === "D" || c === "d") return "신분당선";
   if (c === "Y") return "용인경전철";
   if (c === "U") return "의정부경전철";
-  if (c === "P") return "수인·분당선";
+  if (c === "P" || c === "p") {
+    const pm = ext.match(/^P(\d+)/i);
+    const pn = pm ? parseInt(pm[1], 10) : 0;
+    // CSV 기준:
+    // - P116~P140: 경춘선(광운대~춘천)
+    // - P1xx(그 외): 1호선(경부/장항 등)
+    // - P312~P313: 경의·중앙선(신촌, 서울역)
+    if (pn >= 310 && pn <= 319) return "경의·중앙선";
+    if (pn >= 116 && pn <= 140) return "경춘선";
+    if (pn >= 100 && pn <= 199) return "1호선";
+    // CSV: P549 둔촌동 ~ P555 마천 — 5호선(마천지선)
+    if (pn >= 500 && pn <= 599) return "5호선";
+    return "기타";
+  }
   if (c === "I") return "인천2호선";
   if (c === "K" || c === "k") {
     const km = ext.match(/^K(\d+)/i);
     const kn = km ? parseInt(km[1], 10) : 0;
     // open-seoul-subway: K2xx 대부분 분당·수인, K31x 서울~일산 경의, K11x~K13x 경의·경춘 등
-    if (kn >= 210 && kn <= 249) return "분당선";
+    // CSV: K209 청량리까지 분당(수인·분당) 구간이 포함됨
+    if (kn >= 200 && kn <= 249) return "분당선";
     if (kn >= 250 && kn <= 264) return "수인선";
-    if (kn >= 310 && kn <= 329) return "경의·중앙선";
+    if (kn >= 310 && kn <= 336) return "경의·중앙선";
     if (kn >= 110 && kn <= 118) return "경의·중앙선";
     if (kn >= 119 && kn <= 138) return "경춘선";
     if (kn >= 800 && kn <= 830) return "경의·중앙선";
+    // CSV: K410 판교 ~ K420 여주 — 경강선
+    if (kn >= 410 && kn <= 420) return "경강선";
     return "경의·중앙·경춘";
   }
 
@@ -76,17 +95,57 @@ for (let i = 1; i < lines.length; i++) {
   byName.get(row.name).add(line);
 }
 
-const stations = Array.from(byName.entries())
+let stations = Array.from(byName.entries())
   .map(([name, set]) => ({
     name,
     lines: Array.from(set).sort((a, b) => a.localeCompare(b, "ko"))
   }))
   .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
+/** 수도권 광역급행철도 A노선(통칭 GTX-A) — CSV 미포함·신설역 보강 */
+const GTX_A = "GTX-A";
+const GTX_A_ON_EXISTING = new Set(["대곡", "연신내", "서울역", "삼성", "수서", "구성"]);
+const GTX_A_ONLY_STATIONS = [
+  { name: "운정중앙", lines: [GTX_A] },
+  { name: "킨텍스", lines: [GTX_A] },
+  { name: "창릉", lines: [GTX_A] },
+  { name: "성남", lines: [GTX_A] },
+  { name: "동탄", lines: [GTX_A] }
+];
+
+function mergeGtxA(list) {
+  const byName = new Map(list.map((s) => [s.name, { name: s.name, lines: [...s.lines] }]));
+  for (const n of GTX_A_ON_EXISTING) {
+    const s = byName.get(n);
+    if (s && !s.lines.includes(GTX_A)) s.lines.push(GTX_A);
+  }
+  for (const extra of GTX_A_ONLY_STATIONS) {
+    const cur = byName.get(extra.name);
+    if (!cur) {
+      byName.set(extra.name, { name: extra.name, lines: [...extra.lines] });
+    } else {
+      for (const ln of extra.lines) {
+        if (!cur.lines.includes(ln)) cur.lines.push(ln);
+      }
+    }
+  }
+  return Array.from(byName.values())
+    .map((s) => ({
+      name: s.name,
+      lines: [...s.lines].sort((a, b) => a.localeCompare(b, "ko"))
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
+
+stations = mergeGtxA(stations);
+
 const header = `/**
  * 자동 생성 — scripts/build-capital-metro-stations.mjs
  * 원본 CSV: chanyou/open-seoul-subway (station_code.csv)
+ * + GTX-A(수도권광역급행철도 A노선): 스크립트에서 역·노선 병합
  * 갱신: repo 루트에서 \`node scripts/build-capital-metro-stations.mjs\`
+ *
+ * 번들: \`features/transit/stations.ts\`의 \`loadCapitalMetroStations()\`가 이 파일을 동적 import 하므로 초기 로드에 포함되지 않습니다.
  */
 export type CapitalMetroStation = { name: string; lines: string[] };
 

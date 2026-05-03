@@ -7,6 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  picture   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expenses  Expense[]
+  schedules ScheduleItem[]
+}
+
 model Expense {
   id         String   @id @default(cuid())
   occurredAt DateTime
@@ -14,6 +25,8 @@ model Expense {
   amount     Int
   category   String
   merchant   String?
+  /** 결제 건 제목(실지출). */
+  subject    String?
   detail     String?
   memo       String?
 
@@ -26,6 +39,12 @@ model Expense {
 
   // 결제일(occurredAt)과 다른 "사용 예정/실제일". null이면 결제일과 동일.
   plannedAt               DateTime?
+  plannedEndAt            DateTime?
+  plannedMemo             String?
+  /** 다른 날 사용 — 실제 이용 내용(제목과 별도). */
+  plannedContent          String?
+  plannedDetail           String?
+  plannedCompanionsText   String?
 
   scope              ExpenseScope @default(PERSONAL)
   participants       Json?        // 공동 정산 멤버 목록 (예: ["나","친구1"])
@@ -39,9 +58,13 @@ model Expense {
   transitBusNumber   String?
   transitSegments    Json?
 
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@index([userId])
   @@index([occurredAt])
   @@index([plannedAt])
   @@index([createdAt])
@@ -59,10 +82,15 @@ model ScheduleItem {
   title     String
   note      String?
   showOnCalendar Boolean @default(false)
+  repeatYearly   Boolean @default(false)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([userId])
   @@index([startAt])
   @@index([endAt])
 }

@@ -1,4 +1,4 @@
-import { http } from "../../lib/http";
+import { http } from "@/lib/http";
 
 export type ScheduleItem = {
   id: string;
@@ -7,6 +7,7 @@ export type ScheduleItem = {
   title: string;
   note: string | null;
   showOnCalendar: boolean;
+  repeatYearly: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -17,6 +18,7 @@ export type ScheduleCreateInput = {
   title: string;
   note?: string | null;
   showOnCalendar?: boolean;
+  repeatYearly?: boolean;
 };
 
 export type ScheduleListResponse = {

@@ -1,23 +1,30 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { createSchedule, deleteSchedule, listMonthSchedules, listSchedules, updateSchedule } from "./api";
+import { createSchedule, deleteSchedule, listMonthSchedules, listSchedules, updateSchedule } from "@/features/schedules/api";
 
 async function invalidateSchedules(qc: QueryClient) {
   // day별 쿼리가 여러 개라서 prefix로 전부 무효화 (작성일 ≠ 현재 화면 날짜일 때도 갱신됨)
   await qc.invalidateQueries({ queryKey: ["schedules"] });
 }
 
-export function useSchedules(day: string) {
+export function useSchedules(day: string, opts?: { enabled?: boolean }) {
+  const enabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: ["schedules", day],
-    queryFn: () => listSchedules(day)
+    queryFn: () => listSchedules(day),
+    enabled
   });
 }
 
-export function useMonthSchedules(monthKey: string, opts?: { onlyCalendar?: boolean }) {
+export function useMonthSchedules(
+  monthKey: string,
+  opts?: { onlyCalendar?: boolean; enabled?: boolean }
+) {
   const onlyCalendar = !!opts?.onlyCalendar;
+  const enabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: ["schedules", "month", monthKey, { onlyCalendar }],
-    queryFn: () => listMonthSchedules(monthKey, { onlyCalendar })
+    queryFn: () => listMonthSchedules(monthKey, { onlyCalendar }),
+    enabled
   });
 }
 

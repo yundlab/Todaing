@@ -1,9 +1,9 @@
 import { useState } from "react";
-import type { Expense } from "../features/expenses/api";
+import type { Expense } from "@/features/expenses/api";
 
 const DEFAULT_START = "";
 const DEFAULT_END = "";
-const DEFAULT_CATEGORY = "식사";
+const DEFAULT_CATEGORY = "교통1";
 
 /**
  * 지출/일정 작성 시트(compose)에서 쓰는 폼 상태 묶음.
@@ -27,14 +27,21 @@ export function useExpenseComposeForm() {
   const [payerOther, setPayerOther] = useState("");
   const [expenseScope, setExpenseScope] = useState<"PERSONAL" | "SHARED">("PERSONAL");
   const [sharedNamesText, setSharedNamesText] = useState("");
+  /** 개인 지출: 동행·함께 쓴 사람 (선택, 결제자와 별도 저장) */
+  const [expenseCompanionsText, setExpenseCompanionsText] = useState("");
   const [exInstallment, setExInstallment] = useState(false);
   const [exInstallmentMonths, setExInstallmentMonths] = useState(2);
   const [exInstallmentNoInterest, setExInstallmentNoInterest] = useState(false);
 
-  /** 결제일과 다른 사용 예정/실제일 토글 */
+  /** 「+ 다른 날 사용」블록 표시 */
   const [plannedAtEnabled, setPlannedAtEnabled] = useState(false);
-  /** datetime-local 입력값 (예: "2026-05-12T19:30"). 빈 문자열이면 미입력. */
-  const [plannedAtLocal, setPlannedAtLocal] = useState("");
+  const [plannedUsageDayKey, setPlannedUsageDayKey] = useState("");
+  const [plannedUsageStartText, setPlannedUsageStartText] = useState("");
+  const [plannedUsageEndText, setPlannedUsageEndText] = useState("");
+  const [plannedUsageTitle, setPlannedUsageTitle] = useState("");
+  const [plannedUsageContent, setPlannedUsageContent] = useState("");
+  const [plannedUsageDetail, setPlannedUsageDetail] = useState("");
+  const [plannedUsageCompanionsText, setPlannedUsageCompanionsText] = useState("");
 
   /** 작성 완료/취소 후 폼 리셋 */
   function reset() {
@@ -52,11 +59,18 @@ export function useExpenseComposeForm() {
     setPayerOther("");
     setExpenseScope("PERSONAL");
     setSharedNamesText("");
+    setExpenseCompanionsText("");
     setExInstallment(false);
     setExInstallmentMonths(2);
     setExInstallmentNoInterest(false);
     setPlannedAtEnabled(false);
-    setPlannedAtLocal("");
+    setPlannedUsageDayKey("");
+    setPlannedUsageStartText("");
+    setPlannedUsageEndText("");
+    setPlannedUsageTitle("");
+    setPlannedUsageContent("");
+    setPlannedUsageDetail("");
+    setPlannedUsageCompanionsText("");
   }
 
   return {
@@ -90,6 +104,8 @@ export function useExpenseComposeForm() {
     setExpenseScope,
     sharedNamesText,
     setSharedNamesText,
+    expenseCompanionsText,
+    setExpenseCompanionsText,
 
     exInstallment,
     setExInstallment,
@@ -100,8 +116,20 @@ export function useExpenseComposeForm() {
 
     plannedAtEnabled,
     setPlannedAtEnabled,
-    plannedAtLocal,
-    setPlannedAtLocal,
+    plannedUsageDayKey,
+    setPlannedUsageDayKey,
+    plannedUsageStartText,
+    setPlannedUsageStartText,
+    plannedUsageEndText,
+    setPlannedUsageEndText,
+    plannedUsageTitle,
+    setPlannedUsageTitle,
+    plannedUsageContent,
+    setPlannedUsageContent,
+    plannedUsageDetail,
+    setPlannedUsageDetail,
+    plannedUsageCompanionsText,
+    setPlannedUsageCompanionsText,
 
     reset
   };

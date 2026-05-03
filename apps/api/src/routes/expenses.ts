@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
@@ -12,6 +13,7 @@ const expenseCreateSchema = z.object({
   amount: z.number().int().nonnegative(),
   category: z.string().min(1).max(40),
   merchant: z.string().max(60).nullable().optional(),
+  subject: z.string().max(200).nullable().optional(),
   detail: z.string().max(200).nullable().optional(),
   memo: z.string().max(200).nullable().optional(),
   paymentType: z.enum(["CARD", "CASH", "ACCOUNT", "ETC"]).optional(),
@@ -22,6 +24,11 @@ const expenseCreateSchema = z.object({
   installmentNoInterest: z.boolean().optional(),
   // 결제일(occurredAt)과 다른 사용 예정/실제일. null이면 결제일과 동일.
   plannedAt: z.string().datetime().nullable().optional(),
+  plannedEndAt: z.string().datetime().nullable().optional(),
+  plannedMemo: z.string().max(200).nullable().optional(),
+  plannedContent: z.string().max(200).nullable().optional(),
+  plannedDetail: z.string().max(200).nullable().optional(),
+  plannedCompanionsText: z.string().max(200).nullable().optional(),
   scope: z.enum(["PERSONAL", "SHARED"]).optional(),
   participants: z.unknown().nullable().optional(),
   transitFrom: z.string().max(40).nullable().optional(),
@@ -57,16 +64,19 @@ function sendZodError(
   res.status(400).send(err.issues.map((i) => i.message).join(", "));
 }
 
-expensesRouter.get("/", async (_req, res) => {
+expensesRouter.get("/", async (req: Request, res) => {
+  const userId = req.userId!;
   // 클라이언트가 월·일 합계·타임라인을 목록으로 계산하므로, 상한만 두고 충분히 넓게 반환합니다.
   const items = await prisma.expense.findMany({
+    where: { userId },
     orderBy: { occurredAt: "desc" },
     take: 5000
   });
   res.json({ items });
 });
 
-expensesRouter.get("/summary", async (req, res) => {
+expensesRouter.get("/summary", async (req: Request, res) => {
+  const userId = req.userId!;
   const day = typeof req.query.day === "string" ? req.query.day : null; // YYYY-MM-DD
   if (!day) {
     res.status(400).send("day query param required (YYYY-MM-DD)");
@@ -79,7 +89,7 @@ expensesRouter.get("/summary", async (req, res) => {
   end.setDate(end.getDate() + 1);
 
   const items = await prisma.expense.findMany({
-    where: { occurredAt: { gte: start, lt: end } },
+    where: { userId, occurredAt: { gte: start, lt: end } },
     select: { amount: true, category: true }
   });
 
@@ -97,7 +107,8 @@ expensesRouter.get("/summary", async (req, res) => {
   });
 });
 
-expensesRouter.get("/monthly-summary", async (req, res) => {
+expensesRouter.get("/monthly-summary", async (req: Request, res) => {
+  const userId = req.userId!;
   const month = typeof req.query.month === "string" ? req.query.month : null; // YYYY-MM
   if (!month) {
     res.status(400).send("month query param required (YYYY-MM)");
@@ -114,7 +125,7 @@ expensesRouter.get("/monthly-summary", async (req, res) => {
   end.setMonth(end.getMonth() + 1);
 
   const items = await prisma.expense.findMany({
-    where: { occurredAt: { gte: start, lt: end } },
+    where: { userId, occurredAt: { gte: start, lt: end } },
     select: { amount: true, category: true }
   });
 
@@ -132,9 +143,10 @@ expensesRouter.get("/monthly-summary", async (req, res) => {
   });
 });
 
-expensesRouter.get("/:id", async (req, res) => {
+expensesRouter.get("/:id", async (req: Request, res) => {
+  const userId = req.userId!;
   const id = req.params.id;
-  const item = await prisma.expense.findUnique({ where: { id } });
+  const item = await prisma.expense.findFirst({ where: { id, userId } });
   if (!item) {
     res.status(404).send("not found");
     return;
@@ -142,13 +154,15 @@ expensesRouter.get("/:id", async (req, res) => {
   res.json(item);
 });
 
-function buildCreateData(data: ExpenseCreate) {
+function buildCreateData(data: ExpenseCreate, userId: string) {
   return {
+    userId,
     occurredAt: new Date(data.occurredAt),
     endAt: data.endAt ? new Date(data.endAt) : null,
     amount: data.amount,
     category: data.category,
     merchant: data.merchant ?? null,
+    subject: data.subject ?? null,
     detail: data.detail ?? null,
     memo: data.memo ?? null,
     paymentType: data.paymentType ?? "CARD",
@@ -158,6 +172,11 @@ function buildCreateData(data: ExpenseCreate) {
     installmentMonths: data.installmentMonths ?? null,
     installmentNoInterest: data.installmentNoInterest ?? false,
     plannedAt: data.plannedAt ? new Date(data.plannedAt) : null,
+    plannedEndAt: data.plannedEndAt ? new Date(data.plannedEndAt) : null,
+    plannedMemo: data.plannedMemo ?? null,
+    plannedContent: data.plannedContent ?? null,
+    plannedDetail: data.plannedDetail ?? null,
+    plannedCompanionsText: data.plannedCompanionsText ?? null,
     scope: data.scope ?? "PERSONAL",
     participants: patchJson(data.participants),
     transitFrom: data.transitFrom ?? null,
@@ -179,6 +198,7 @@ function buildUpdateData(data: ExpenseUpdate) {
     amount: data.amount === undefined ? undefined : data.amount,
     category: data.category ?? undefined,
     merchant: patchNullable(data.merchant),
+    subject: patchNullable(data.subject),
     detail: patchNullable(data.detail),
     memo: patchNullable(data.memo),
     paymentType: data.paymentType ?? undefined,
@@ -193,6 +213,16 @@ function buildUpdateData(data: ExpenseUpdate) {
         : data.plannedAt
           ? new Date(data.plannedAt)
           : null,
+    plannedEndAt:
+      data.plannedEndAt === undefined
+        ? undefined
+        : data.plannedEndAt
+          ? new Date(data.plannedEndAt)
+          : null,
+    plannedMemo: patchNullable(data.plannedMemo),
+    plannedContent: patchNullable(data.plannedContent),
+    plannedDetail: patchNullable(data.plannedDetail),
+    plannedCompanionsText: patchNullable(data.plannedCompanionsText),
     scope: data.scope ?? undefined,
     participants: patchJson(data.participants),
     transitFrom: patchNullable(data.transitFrom),
@@ -205,18 +235,20 @@ function buildUpdateData(data: ExpenseUpdate) {
   };
 }
 
-expensesRouter.post("/", async (req, res) => {
+expensesRouter.post("/", async (req: Request, res) => {
+  const userId = req.userId!;
   const parsed = expenseCreateSchema.safeParse(req.body);
   if (!parsed.success) {
     sendZodError(res, parsed.error);
     return;
   }
 
-  const created = await prisma.expense.create({ data: buildCreateData(parsed.data) });
+  const created = await prisma.expense.create({ data: buildCreateData(parsed.data, userId) });
   res.status(201).json(created);
 });
 
-expensesRouter.patch("/:id", async (req, res) => {
+expensesRouter.patch("/:id", async (req: Request, res) => {
+  const userId = req.userId!;
   const id = req.params.id;
   const parsed = expenseUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -224,7 +256,7 @@ expensesRouter.patch("/:id", async (req, res) => {
     return;
   }
 
-  const existing = await prisma.expense.findUnique({ where: { id } });
+  const existing = await prisma.expense.findFirst({ where: { id, userId } });
   if (!existing) {
     res.status(404).send("not found");
     return;
@@ -238,9 +270,10 @@ expensesRouter.patch("/:id", async (req, res) => {
   res.json(updated);
 });
 
-expensesRouter.delete("/:id", async (req, res) => {
+expensesRouter.delete("/:id", async (req: Request, res) => {
+  const userId = req.userId!;
   const id = req.params.id;
-  const existing = await prisma.expense.findUnique({ where: { id } });
+  const existing = await prisma.expense.findFirst({ where: { id, userId } });
   if (!existing) {
     res.status(404).send("not found");
     return;
