@@ -1,6 +1,12 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import {
+  mergeYearlyIntoDayWindow,
+  mergeYearlyIntoMonthWindow,
+  type ScheduleRow
+} from "../scheduleRepeatYearly.js";
 
 export const schedulesRouter = Router();
 
@@ -9,12 +15,14 @@ const scheduleCreateSchema = z.object({
   endAt: z.string().datetime().nullable().optional(),
   title: z.string().min(1).max(80),
   note: z.string().max(500).nullable().optional(),
-  showOnCalendar: z.boolean().optional()
+  showOnCalendar: z.boolean().optional(),
+  repeatYearly: z.boolean().optional()
 });
 
 const scheduleUpdateSchema = scheduleCreateSchema.partial();
 
-schedulesRouter.get("/", async (req, res) => {
+schedulesRouter.get("/", async (req: Request, res) => {
+  const userId = req.userId!;
   const day = typeof req.query.day === "string" ? req.query.day : null; // YYYY-MM-DD
   if (!day) {
     res.status(400).send("day query param required (YYYY-MM-DD)");
@@ -26,15 +34,29 @@ schedulesRouter.get("/", async (req, res) => {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const items = await prisma.scheduleItem.findMany({
-    where: { startAt: { gte: start, lt: end } },
-    orderBy: { startAt: "asc" }
-  });
+  const [inRange, yearlyRows] = await Promise.all([
+    prisma.scheduleItem.findMany({
+      where: { userId, startAt: { gte: start, lt: end } },
+      orderBy: { startAt: "asc" }
+    }),
+    prisma.scheduleItem.findMany({
+      where: { userId, repeatYearly: true }
+    })
+  ]);
+
+  const items = mergeYearlyIntoDayWindow(
+    inRange as ScheduleRow[],
+    yearlyRows as ScheduleRow[],
+    day,
+    start,
+    end
+  );
 
   res.json({ items });
 });
 
-schedulesRouter.get("/month", async (req, res) => {
+schedulesRouter.get("/month", async (req: Request, res) => {
+  const userId = req.userId!;
   const month = typeof req.query.month === "string" ? req.query.month : null; // YYYY-MM
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
     res.status(400).send("month query param required (YYYY-MM)");
@@ -47,18 +69,37 @@ schedulesRouter.get("/month", async (req, res) => {
   const end = new Date(start);
   end.setMonth(end.getMonth() + 1);
 
-  const items = await prisma.scheduleItem.findMany({
-    where: {
-      startAt: { gte: start, lt: end },
-      ...(onlyCalendar ? { showOnCalendar: true } : {})
-    },
-    orderBy: { startAt: "asc" }
-  });
+  const [inRange, yearlyRows] = await Promise.all([
+    prisma.scheduleItem.findMany({
+      where: {
+        userId,
+        startAt: { gte: start, lt: end },
+        ...(onlyCalendar ? { showOnCalendar: true } : {})
+      },
+      orderBy: { startAt: "asc" }
+    }),
+    prisma.scheduleItem.findMany({
+      where: {
+        userId,
+        repeatYearly: true,
+        ...(onlyCalendar ? { showOnCalendar: true } : {})
+      }
+    })
+  ]);
+
+  const items = mergeYearlyIntoMonthWindow(
+    inRange as ScheduleRow[],
+    yearlyRows as ScheduleRow[],
+    month,
+    start,
+    end
+  );
 
   res.json({ items });
 });
 
-schedulesRouter.post("/", async (req, res) => {
+schedulesRouter.post("/", async (req: Request, res) => {
+  const userId = req.userId!;
   const parsed = scheduleCreateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).send(parsed.error.issues.map((i) => i.message).join(", "));
@@ -75,18 +116,21 @@ schedulesRouter.post("/", async (req, res) => {
 
   const created = await prisma.scheduleItem.create({
     data: {
+      userId,
       startAt,
       endAt,
       title: parsed.data.title,
       note: parsed.data.note ?? null,
-      showOnCalendar: parsed.data.showOnCalendar ?? false
+      showOnCalendar: parsed.data.showOnCalendar ?? true,
+      repeatYearly: parsed.data.repeatYearly ?? false
     }
   });
 
   res.status(201).json(created);
 });
 
-schedulesRouter.patch("/:id", async (req, res) => {
+schedulesRouter.patch("/:id", async (req: Request, res) => {
+  const userId = req.userId!;
   const id = req.params.id;
   const parsed = scheduleUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -94,7 +138,7 @@ schedulesRouter.patch("/:id", async (req, res) => {
     return;
   }
 
-  const existing = await prisma.scheduleItem.findUnique({ where: { id } });
+  const existing = await prisma.scheduleItem.findFirst({ where: { id, userId } });
   if (!existing) {
     res.status(404).send("not found");
     return;
@@ -119,16 +163,18 @@ schedulesRouter.patch("/:id", async (req, res) => {
       endAt: parsed.data.endAt === undefined ? undefined : nextEndAt,
       title: parsed.data.title ?? undefined,
       note: parsed.data.note === undefined ? undefined : parsed.data.note ?? null,
-      showOnCalendar: parsed.data.showOnCalendar === undefined ? undefined : parsed.data.showOnCalendar
+      showOnCalendar: parsed.data.showOnCalendar === undefined ? undefined : parsed.data.showOnCalendar,
+      repeatYearly: parsed.data.repeatYearly === undefined ? undefined : parsed.data.repeatYearly
     }
   });
 
   res.json(updated);
 });
 
-schedulesRouter.delete("/:id", async (req, res) => {
+schedulesRouter.delete("/:id", async (req: Request, res) => {
+  const userId = req.userId!;
   const id = req.params.id;
-  const existing = await prisma.scheduleItem.findUnique({ where: { id } });
+  const existing = await prisma.scheduleItem.findFirst({ where: { id, userId } });
   if (!existing) {
     res.status(404).send("not found");
     return;
