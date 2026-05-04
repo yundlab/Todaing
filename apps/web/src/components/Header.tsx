@@ -58,23 +58,11 @@ export default function Header(props: {
                 />
               </svg>
             </button>
-            {/* 탭 한 번에 네이티브 date/month 피커 — 메인에서도 안정적으로 열기 */}
-            <div className="relative inline-flex">
-              <button
-                type="button"
-                className="inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-semibold tabular-nums text-slate-900 shadow-sm active:scale-[0.99]"
-                onClick={() => {
-                  const el = calendarInputRef.current;
-                  if (!el) return;
-                  // Safari/모바일에서 opacity=0 input 클릭이 막히는 케이스가 있어 showPicker 우선 사용
-                  const anyEl = el as any;
-                  if (typeof anyEl.showPicker === "function") anyEl.showPicker();
-                  else el.click();
-                }}
-                aria-label={monthMode ? "월 선택" : "날짜 선택"}
-              >
+            {/* 네이티브 date/month: iOS Safari는 sr-only+프로그램 click/showPicker가 막히는 경우가 많아, 실제 터치 타깃이 되는 투명 input 오버레이 사용 */}
+            <div className="relative inline-flex min-h-8 min-w-[5.5rem] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-semibold tabular-nums text-slate-900 shadow-sm active:scale-[0.99]">
+              <span className="pointer-events-none select-none" aria-hidden="true">
                 {monthMode ? monthKey : dayKey}
-              </button>
+              </span>
               <input
                 ref={calendarInputRef}
                 type={monthMode ? "month" : "date"}
@@ -87,8 +75,9 @@ export default function Header(props: {
                   d.setHours(0, 0, 0, 0);
                   onPick(d);
                 }}
-                className="sr-only"
-                tabIndex={-1}
+                className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-[0.01]"
+                style={{ fontSize: "1rem" }}
+                aria-label={monthMode ? "월 선택" : "날짜 선택"}
               />
             </div>
             <button

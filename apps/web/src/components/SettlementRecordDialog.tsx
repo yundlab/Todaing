@@ -2,7 +2,7 @@ import { CalendarIcon, calendarPickerIndicatorOverlayClasses } from "@/component
 import { cn } from "@/components/cn";
 import { fieldBorderClass } from "@/components/inputFieldClasses";
 
-export type SettlementLogOpen = {
+type SettlementLogOpen = {
   day: string;
   other: string;
   revertOnClose: boolean;

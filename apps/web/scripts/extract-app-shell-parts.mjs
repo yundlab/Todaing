@@ -34,7 +34,8 @@ const composeBody = dedentBlock(slice1(2121, 2926));
 
 const mainOut = `import type { Expense } from "@/features/expenses/api";
 import type { ScheduleItem } from "@/features/schedules/api";
-import { ClockIcon, UserIcon, UsersIcon } from "@/components/icons";
+import { ClockIcon, UsersIcon } from "@/components/icons";
+import { UserIcon } from "@/components/icons/UserIcon";
 import ExpenseCard from "@/components/ExpenseCard";
 import { cn } from "@/components/cn";
 import {
@@ -111,7 +112,9 @@ ${mainBody
 `;
 
 const composeOut = `import type { Dispatch, SetStateAction } from "react";
-import { ClockIcon, UserIcon, UsersIcon, WalletIcon } from "@/components/icons";
+import { ClockIcon, UsersIcon } from "@/components/icons";
+import { UserIcon } from "@/components/icons/UserIcon";
+import { WalletIcon } from "@/components/icons/WalletIcon";
 import DateMonthInput from "@/components/DateMonthInput";
 import Transit1Fields from "@/components/transit/Transit1Fields";
 import Transit2Fields from "@/components/transit/Transit2Fields";
@@ -307,6 +310,6 @@ ${composeBody
 }
 `;
 
-fs.writeFileSync(path.join(__dirname, "../src/ui/views/MainHomeView.tsx"), mainOut);
+fs.writeFileSync(path.join(__dirname, "../src/ui/views/MainHome/MainHomeView.tsx"), mainOut);
 fs.writeFileSync(path.join(__dirname, "../src/ui/sheets/ComposeForm.tsx"), composeOut);
-console.log("Wrote ui/views/MainHomeView.tsx and ui/sheets/ComposeForm.tsx");
+console.log("Wrote ui/views/MainHome/MainHomeView.tsx and ui/sheets/ComposeForm.tsx");

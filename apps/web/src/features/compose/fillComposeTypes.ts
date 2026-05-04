@@ -1,0 +1,52 @@
+import type { Dispatch, SetStateAction } from "react";
+import type { Expense } from "@/features/expenses/api";
+
+type PaymentType = Expense["paymentType"];
+import type { TransitLeg, Transit2SegmentDraft } from "@/domain/transitPayload";
+
+/** `fillComposeFrom*`가 RouteShell 상태를 채울 때 공통으로 쓰는 setter 묶음 */
+export type FillComposeDispatchers = {
+  resolveOriginalExpense: (e: Expense) => Expense;
+  setComposeEditScheduleId: Dispatch<SetStateAction<string | null>>;
+  setComposeEditExpenseId: Dispatch<SetStateAction<string | null>>;
+  setComposeDayKey: Dispatch<SetStateAction<string>>;
+  setComposeKind: Dispatch<SetStateAction<"expense" | "schedule">>;
+  setScheduleWithExpense: Dispatch<SetStateAction<boolean>>;
+  setSchedulePayTimeText: Dispatch<SetStateAction<string>>;
+  setSchedulePeopleText: Dispatch<SetStateAction<string>>;
+  setScheduleShowOnCalendar: Dispatch<SetStateAction<boolean>>;
+  setScheduleRepeatYearly: Dispatch<SetStateAction<boolean>>;
+  setScheduleCancelled: Dispatch<SetStateAction<boolean>>;
+  setScheduleExpenseTitle: Dispatch<SetStateAction<string>>;
+  setEntryStartText: Dispatch<SetStateAction<string>>;
+  setEntryEndText: Dispatch<SetStateAction<string>>;
+  setEntryCategory: Dispatch<SetStateAction<string>>;
+  setEntryTitle: Dispatch<SetStateAction<string>>;
+  setEntryNote: Dispatch<SetStateAction<string>>;
+  setExDetail: Dispatch<SetStateAction<string>>;
+  setExMerchant: Dispatch<SetStateAction<string>>;
+  setExAmount: Dispatch<SetStateAction<string>>;
+  setExPaymentType: Dispatch<SetStateAction<PaymentType>>;
+  setExPaymentLabel: Dispatch<SetStateAction<string>>;
+  setExInstallment: Dispatch<SetStateAction<boolean>>;
+  setExInstallmentMonths: Dispatch<SetStateAction<number>>;
+  setExInstallmentNoInterest: Dispatch<SetStateAction<boolean>>;
+  setPayerPreset: Dispatch<SetStateAction<"나" | "기타">>;
+  setPayerOther: Dispatch<SetStateAction<string>>;
+  setExpenseScope: Dispatch<SetStateAction<"PERSONAL" | "SHARED">>;
+  setSharedNamesText: Dispatch<SetStateAction<string>>;
+  setExpenseCompanionsText: Dispatch<SetStateAction<string>>;
+  setPlannedAtEnabled: Dispatch<SetStateAction<boolean>>;
+  setPlannedUsageDayKey: Dispatch<SetStateAction<string>>;
+  setPlannedUsageStartText: Dispatch<SetStateAction<string>>;
+  setPlannedUsageEndText: Dispatch<SetStateAction<string>>;
+  setPlannedUsageTitle: Dispatch<SetStateAction<string>>;
+  setPlannedUsageContent: Dispatch<SetStateAction<string>>;
+  setPlannedUsageDetail: Dispatch<SetStateAction<string>>;
+  setPlannedUsageCompanionsText: Dispatch<SetStateAction<string>>;
+  setTransitLegs: Dispatch<SetStateAction<TransitLeg[]>>;
+  setTransit2SegmentsDraft: Dispatch<SetStateAction<Transit2SegmentDraft[]>>;
+  setExTransitMode: Dispatch<SetStateAction<string>>;
+  setExTransitFromText: Dispatch<SetStateAction<string>>;
+  setExTransitToText: Dispatch<SetStateAction<string>>;
+};

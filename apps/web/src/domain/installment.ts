@@ -13,7 +13,7 @@ export const AGGREGATE_MODE_LS_KEY = "aggregateMode.v1";
  * 할부 결제건을 결제월부터 N개월 균등 분할.
  * 반올림 보정은 마지막 달에 처리하여 합이 원금과 정확히 일치하도록 함.
  */
-export function allocateInstallmentByMonth(
+function allocateInstallmentByMonth(
   amount: number,
   months: number,
   occurredAt: Date | string

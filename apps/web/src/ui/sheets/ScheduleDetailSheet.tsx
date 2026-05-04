@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ScheduleItem } from "@/features/schedules/api";
 import ComposeSheet from "@/components/ComposeSheet";
-import { ClockIcon, UsersIcon } from "@/components/icons/index";
+import { ClockIcon, UsersIcon } from "@/components/icons";
 import ScheduleDetailNoteBlock from "@/components/ScheduleDetailNoteBlock";
 import { parseEmojiPrefixedTitle } from "@/domain/categoryUi";
 import { parseScheduleNote } from "@/domain/scheduleNote";

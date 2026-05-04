@@ -84,13 +84,13 @@ export function createExpense(input: ExpenseCreateInput): Promise<Expense> {
   return http("/api/expenses", { method: "POST", body: JSON.stringify(input) });
 }
 
-export type ExpenseSummaryResponse = {
+type ExpenseSummaryResponse = {
   day: string;
   total: number;
   byCategory: Record<string, number>;
 };
 
-export type MonthlyExpenseSummaryResponse = {
+type MonthlyExpenseSummaryResponse = {
   month: string;
   total: number;
   byCategory: Record<string, number>;
@@ -106,11 +106,7 @@ export function getMonthlyExpenseSummary(
   return http(`/api/expenses/monthly-summary?month=${encodeURIComponent(month)}`);
 }
 
-export function getExpense(id: string): Promise<Expense> {
-  return http(`/api/expenses/${encodeURIComponent(id)}`);
-}
-
-export type ExpenseUpdateInput = Partial<ExpenseCreateInput>;
+type ExpenseUpdateInput = Partial<ExpenseCreateInput>;
 
 export function updateExpense(id: string, input: ExpenseUpdateInput): Promise<Expense> {
   return http(`/api/expenses/${encodeURIComponent(id)}`, {

@@ -4,7 +4,7 @@ import { AUTH_SESSION_LS_KEY, safeParseJwtPayload, type AuthUser } from "@/lib/a
 import TodaingLogoMark from "@/components/TodaingLogoMark";
 
 declare global {
-  // eslint-disable-next-line no-unused-vars
+   
   interface Window {
     __gsiScriptPromise?: Promise<void>;
     __gsiInitialized?: boolean;
@@ -15,7 +15,7 @@ type GsiInitConfig = {
   client_id: string;
   ux_mode: "redirect" | "popup";
   login_uri: string;
-  // eslint-disable-next-line no-unused-vars
+   
   callback: (resp: { credential?: string }) => void;
 };
 
@@ -29,9 +29,9 @@ type GsiButtonOptions = {
 };
 
 type GoogleAccountsId = {
-  // eslint-disable-next-line no-unused-vars
+   
   initialize: (config: GsiInitConfig) => void;
-  // eslint-disable-next-line no-unused-vars
+   
   renderButton: (el: HTMLElement, options: GsiButtonOptions) => void;
 };
 

@@ -11,11 +11,11 @@ export type StationSearchTarget = {
 type Props = {
   open: StationSearchTarget | null;
   query: string;
-  // eslint-disable-next-line no-unused-vars
+   
   onQueryChange: (q: string) => void;
   onClose: () => void;
   /** 사용자가 역을 선택했을 때 — legIndex/field와 함께 station 전달 */
-  // eslint-disable-next-line no-unused-vars
+   
   onPick: (target: StationSearchTarget, station: Station) => void;
 };
 

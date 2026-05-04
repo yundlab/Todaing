@@ -7,7 +7,7 @@ import { localDayTimeToMs } from "@/domain/plannedUsageOnDay";
 import { parseScheduleNote } from "@/domain/scheduleNote";
 import { formatWon } from "@/domain/settlement";
 import SettlementRow from "@/components/SettlementRow";
-import { UsersIcon } from "@/components/icons/index";
+import { UsersIcon } from "@/components/icons";
 
 function ClockIcon({ className }: { className?: string }) {
   return (
@@ -27,7 +27,7 @@ function ClockIcon({ className }: { className?: string }) {
   );
 }
 
-export type TodayDetailViewProps = {
+type TodayDetailViewProps = {
   header: ReactNode;
   settlementDialog: ReactNode;
   todayExpenses: Expense[];
@@ -57,9 +57,9 @@ export type TodayDetailViewProps = {
     perPerson: Map<string, number>;
   };
   dayKey: string;
-  // eslint-disable-next-line no-unused-vars -- documented callback params
+   
   isNetSettledForDay: (day: string, name: string) => boolean;
-  // eslint-disable-next-line no-unused-vars
+   
   requestToggleNetSettledForDay: (day: string, name: string) => void;
   settlementAllByDay?: Map<string, Map<string, number>>;
 };

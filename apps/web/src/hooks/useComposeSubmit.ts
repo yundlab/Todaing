@@ -8,7 +8,7 @@ import { encodeScheduleNote } from "@/domain/scheduleNote";
 import { parseAmountInput } from "@/domain/parseAmountInput";
 import { sharedSplitMemberNames } from "@/domain/settlement";
 
-export type ComposeSubmitArgs = {
+type ComposeSubmitArgs = {
   category: string;
   title: string;
   startMin: number;
@@ -59,7 +59,7 @@ function buildExpenseParticipantsForSave(
 /** Compose 시트의 폼 state·변환자·뮤테이션을 받아 4가지 저장 흐름을 노출한다. */
 type Mutate<TVars, TData> = (_vars: TVars) => Promise<TData>;
 
-export type UseComposeSubmitDeps = {
+type UseComposeSubmitDeps = {
   // mutateAsync 메서드들
   createExpense: Mutate<ExpenseCreateInput, Expense>;
   updateExpense: Mutate<{ id: string; input: Partial<ExpenseCreateInput> }, Expense>;
@@ -112,9 +112,9 @@ export type UseComposeSubmitDeps = {
 
   // 액션
   handleComposeClose: () => void;
-  // eslint-disable-next-line no-unused-vars
+   
   setComposeConvertFromExpenseId: (id: string | null) => void;
-  // eslint-disable-next-line no-unused-vars
+   
   setComposeConvertFromScheduleId: (id: string | null) => void;
 };
 

@@ -18,7 +18,7 @@ export function sharedSplitMemberNames(payer: string | null, participantNames: s
   return names;
 }
 
-export function sharedParticipantsAll(payer: string | null, participants: unknown): string[] | null {
+function sharedParticipantsAll(payer: string | null, participants: unknown): string[] | null {
   const base = Array.isArray(participants) ? participants : null;
   if (!base) return null;
   const raw = base.map((x) => String(x).trim()).filter(Boolean);
