@@ -1,13 +1,7 @@
-import type { Expense } from "@/features/expenses/api";
-import { ClockIcon, PaymentMethodIcon, UsersIcon } from "@/components/icons/index";
+import { ClockIcon, PaymentMethodIcon, UsersIcon } from "@/components/icons";
 import ExpenseCard from "@/components/ExpenseCard";
 import { cn } from "@/components/cn";
-import {
-  CATEGORY_GROUPS,
-  emojiForCategory,
-  normalizeCategory,
-  parseEmojiPrefixedTitle
-} from "@/domain/categoryUi";
+import { emojiForCategory, normalizeCategory, parseEmojiPrefixedTitle } from "@/domain/categoryUi";
 import { tintForCategory } from "@/domain/categoryTint";
 import { stripTransitRoutePrefix } from "@/domain/expenseTransitText";
 import { parseScheduleNote } from "@/domain/scheduleNote";
@@ -20,34 +14,10 @@ import {
   settlementLineForExpense
 } from "@/domain/settlement";
 import { monthIndexDiff } from "@/domain/monthKeyDiff";
-import type { TimelineItem } from "@/domain/timelineTypes";
 import { isUsageDayDifferent } from "@/domain/expenseDayUsage";
-import type { AggregateMode } from "@/domain/installment";
-
-export type MainBudgetUi = {
-  todayTotal: number;
-  dailyBudget: number;
-  monthTotal: number;
-  monthPctText: number;
-  paceUi: { emoji: string; message: string; bubble: string };
-  message: string;
-};
-
-export type MainHomeViewProps = {
-  showCategoryPreview: boolean;
-  expensesError: unknown;
-  scheduleError: unknown;
-  budgetUi: MainBudgetUi;
-  monthlyBudgetWon: number;
-  timeline: TimelineItem[];
-  aggregateMode: AggregateMode;
-  dayKey: string;
-  dayLocal00: Date;
-  onOpenScheduleId: (_id: string) => void;
-  onOpenExpense: (_e: Expense) => void;
-  resolveOriginalExpense: (_e: Expense) => Expense;
-  isExpenseNetSettledForDay: (_day: string, _e: Expense, _me: string) => boolean;
-};
+import MainHomeBudgetHeroSection from "./MainHomeBudgetHeroSection";
+import MainHomeCategoryPreviewSection from "./MainHomeCategoryPreviewSection";
+import type { MainHomeViewProps } from "./MainHomeTypes";
 
 export default function MainHomeView(props: MainHomeViewProps) {
   const {
@@ -74,110 +44,9 @@ export default function MainHomeView(props: MainHomeViewProps) {
         </div>
       ) : null}
 
-      {showCategoryPreview ? (
-        <section className="mb-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-900">카테고리 이모티콘 미리보기</h2>
-            <div className="text-xs text-slate-500">?previewCategories=1</div>
-          </div>
-          <div className="mt-3 space-y-4">
-            {CATEGORY_GROUPS.map((g) => (
-              <div key={g.label}>
-                <div className="text-xs font-semibold text-slate-500">{g.label}</div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {g.items.map((c) => {
-                    const tint = tintForCategory(c);
-                    return (
-                      <div
-                        key={c}
-                        className={cn(
-                          "flex items-center justify-between gap-2 rounded-2xl border px-3 py-2 shadow-sm",
-                          tint.bg,
-                          tint.border
-                        )}
-                      >
-                        <div className={cn("text-sm font-semibold", tint.text)}>
-                          <span className="mr-2">{emojiForCategory(c)}</span>
-                          {c}
-                        </div>
-                        <div className="text-xs text-slate-500">{emojiForCategory(c)}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {showCategoryPreview ? <MainHomeCategoryPreviewSection /> : null}
 
-      <section className="mb-4 overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)]">
-        <div className="h-2 w-full bg-gradient-to-r from-teal-400 via-sky-400 to-indigo-400" />
-        <div className="px-5 pb-5 pt-7">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-500">오늘 지출</div>
-              <div className="mt-1 flex items-baseline gap-1 tabular-nums text-slate-900">
-                <span className="text-3xl font-extrabold tracking-tight">
-                  {Math.round(budgetUi.todayTotal).toLocaleString()}
-                </span>
-                <span className="text-sm font-semibold text-slate-400">원</span>
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                예산 {formatWon(Math.round(budgetUi.dailyBudget))} · 남음{" "}
-                {formatWon(Math.round(budgetUi.dailyBudget - budgetUi.todayTotal))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-3xl border border-indigo-200/70 bg-slate-50/70 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold text-slate-500">이번달 예산 현황</div>
-              <div className="text-xs font-semibold text-slate-700">{budgetUi.monthPctText}%</div>
-            </div>
-            <div className="mt-2 h-2 w-full rounded-full bg-white">
-              <div
-                className="h-2 rounded-full bg-indigo-600"
-                style={{ width: `${budgetUi.monthPctText}%` }}
-              />
-            </div>
-            <div className="mt-3 flex items-end justify-between">
-              <div>
-                <div className="text-[11px] font-semibold text-slate-500">이번달 지출</div>
-                <div className="mt-1 flex items-baseline gap-1 tabular-nums text-slate-900">
-                  <span className="text-base font-extrabold tracking-tight">
-                    {Math.round(budgetUi.monthTotal).toLocaleString()}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-400">원</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[11px] font-semibold text-slate-500">예산</div>
-                <div className="mt-1 flex items-baseline justify-end gap-1 tabular-nums text-slate-900">
-                  <span className="text-base font-extrabold tracking-tight">{monthlyBudgetWon.toLocaleString()}</span>
-                  <span className="text-xs font-semibold text-slate-400">원</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={cn(
-              "mt-4 flex items-start gap-3 rounded-2xl border p-4",
-              // keep bubble tone but on light card
-              budgetUi.paceUi.bubble
-            )}
-          >
-            <div className="shrink-0 text-2xl leading-none">{budgetUi.paceUi.emoji}</div>
-            <div className="min-w-0">
-              <div className="whitespace-pre-line text-sm font-semibold">{budgetUi.message}</div>
-              <div className="mt-1 text-[11px] font-semibold text-slate-500">
-                예산 {formatWon(monthlyBudgetWon)}원 중 {budgetUi.monthPctText}% 사용
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <MainHomeBudgetHeroSection budgetUi={budgetUi} monthlyBudgetWon={monthlyBudgetWon} />
 
       <section>
         <h2 className="text-sm font-semibold text-slate-900">오늘 기록</h2>
@@ -201,13 +70,13 @@ export default function MainHomeView(props: MainHomeViewProps) {
                   ? (() => {
                       const memo = schedNote.memo ?? "";
                       const firstToken = memo.trimStart().split(/\s+/)[0] ?? "";
-                      // e.g. "✈️ 서울 → 제주" → "✈️"
                       return firstToken ? firstToken : null;
                     })()
                   : null;
               return (
                 <li key={`s-${it.id}`}>
                   <button
+                    type="button"
                     className={cn(
                       "w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:brightness-[0.99]",
                       isCancelled ? "bg-slate-50/40" : ""
@@ -244,9 +113,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                           >
                             <span className="inline-flex shrink-0 items-center gap-1">
                               <ClockIcon className="h-4 w-4 text-slate-300" />
-                              <span className="tabular-nums">
-                                {timeRangeLabel(it.startAt, it.endAt)}
-                              </span>
+                              <span className="tabular-nums">{timeRangeLabel(it.startAt, it.endAt)}</span>
                             </span>
                             {schedNote.people.length ? (
                               <span
@@ -254,9 +121,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                                 aria-label={`함께한 사람 ${schedNote.people.join(", ")}`}
                               >
                                 <UsersIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
-                                <span className="min-w-0 break-words normal-case">
-                                  {schedNote.people.join(", ")}
-                                </span>
+                                <span className="min-w-0 break-words normal-case">{schedNote.people.join(", ")}</span>
                               </span>
                             ) : null}
                           </div>
@@ -291,7 +156,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                       if (direct) return direct;
                       const seg = e.transitSegments;
                       if (!Array.isArray(seg) || !seg.length) return null;
-                      const first = seg[0] as any;
+                      const first = seg[0] as { mode?: unknown };
                       const m = typeof first?.mode === "string" ? String(first.mode).trim() : "";
                       return m || null;
                     })()
@@ -303,11 +168,9 @@ export default function MainHomeView(props: MainHomeViewProps) {
               const pm = (e.plannedMemo ?? "").trim();
               const pc = (e.plannedContent ?? "").trim();
               const plannedTitle = pc ? pm : "";
-              const usageCardMainTitle =
-                plannedUsageCard
-                  ? (plannedTitle.trim() || (e.subject ?? "").trim() || it.label)
-                  : it.label;
-              /** 실사용「내용」만 회색 박스(라벨 없음). `plannedContent`가 있을 때만 표시. */
+              const usageCardMainTitle = plannedUsageCard
+                ? plannedTitle.trim() || (e.subject ?? "").trim() || it.label
+                : it.label;
               const usageGrayBody = plannedUsageCard && pc.trim() ? pc.trim() : "";
               return (
                 <li key={`u-${e.id}-${it.startMs}`}>
@@ -358,9 +221,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                           <span className="text-xs font-semibold">원</span>
                         </div>
                       ) : (
-                        <div className="text-right text-xs font-semibold tabular-nums text-slate-400">
-                          금액 미입력
-                        </div>
+                        <div className="text-right text-xs font-semibold tabular-nums text-slate-400">금액 미입력</div>
                       )
                     }
                   />
@@ -386,13 +247,11 @@ export default function MainHomeView(props: MainHomeViewProps) {
                 : null;
             const settlementLine = isCashflowVirtual ? null : settlementLineForExpense(e, "나");
             const isSettled = isCashflowVirtual ? true : isExpenseNetSettledForDay(dayKey, e, "나");
-            // 카드에는 세부 내용(detail) 노출하지 않음. (메모만 노출)
             const rawMemoText = (e.memo ?? "").trim();
             const memoText =
               normalizeCategory(e.category) === "교통2" && isUsageDayDifferent(e, dayKey)
                 ? stripTransitRoutePrefix(rawMemoText, e.transitFrom, e.transitTo).trim()
                 : rawMemoText;
-            /** 교통1 카드 하단: 구간마다 버스번호·지하철 노선을 순서대로 표시 */
             const transit1LineSummary = (() => {
               if (normalizeCategory(e.category) !== "교통1") return "";
               const seg = e.transitSegments;
@@ -416,10 +275,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
             const companionsLine = participantsDisplayWithoutMe(e.participants, "나").trim();
             const isCardPayment = e.paymentType === "CARD";
             const isCardInstallment =
-              isCardPayment &&
-              !!e.installment &&
-              e.installmentMonths != null &&
-              e.installmentMonths >= 2;
+              isCardPayment && !!e.installment && e.installmentMonths != null && e.installmentMonths >= 2;
             const cardPayLabel = (e.paymentMethodLabel ?? "").trim() || PAYMENT_TYPE_LABEL.CARD;
             const installmentMonthsLabel = isCardInstallment
               ? e.installmentNoInterest
@@ -460,13 +316,12 @@ export default function MainHomeView(props: MainHomeViewProps) {
                       ? (() => {
                           const from = (e.transitFrom ?? "").trim();
                           const to = (e.transitTo ?? "").trim();
-                          const route = from && to ? `${from} → ${to}` : (from || to);
+                          const route = from && to ? `${from} → ${to}` : from || to;
                           return route || (e.merchant ?? normalizeCategory(e.category));
                         })()
                       : normalizeCategory(e.category) === "교통2"
                         ? (() => {
-                            const merchantLine =
-                              (e.merchant ?? "").trim() || normalizeCategory(e.category);
+                            const merchantLine = (e.merchant ?? "").trim() || normalizeCategory(e.category);
                             const subj = (e.subject ?? "").trim();
                             return (
                               <div className="min-w-0 text-left">
@@ -508,8 +363,8 @@ export default function MainHomeView(props: MainHomeViewProps) {
                             "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold",
                             chipClass("teal")
                           )}
-                      >
-                        공동 · {participantsCount(e) ?? "?"}명
+                        >
+                          공동 · {participantsCount(e) ?? "?"}명
                         </span>
                       ) : (
                         <span
@@ -570,12 +425,10 @@ export default function MainHomeView(props: MainHomeViewProps) {
                         </span>
                       </span>
                       {companionsLine ? (
-                        <>
-                          <span className="inline-flex min-w-0 max-w-full items-start gap-1">
-                            <UsersIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" aria-hidden />
-                            <span className="min-w-0 break-words">{companionsLine}</span>
-                          </span>
-                        </>
+                        <span className="inline-flex min-w-0 max-w-full items-start gap-1">
+                          <UsersIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" aria-hidden />
+                          <span className="min-w-0 break-words">{companionsLine}</span>
+                        </span>
                       ) : null}
                     </>
                   }
@@ -583,9 +436,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                     e.amount > 0 ? (
                       <div className="text-right tabular-nums text-slate-900">
                         <div className="flex items-baseline justify-end gap-1">
-                          <span className="text-lg font-extrabold tracking-tight">
-                            {e.amount.toLocaleString()}
-                          </span>
+                          <span className="text-lg font-extrabold tracking-tight">{e.amount.toLocaleString()}</span>
                           <span className="text-xs font-semibold text-slate-400">원</span>
                         </div>
                         {aggregateMode !== "cashflow" &&
@@ -598,9 +449,7 @@ export default function MainHomeView(props: MainHomeViewProps) {
                         ) : null}
                       </div>
                     ) : (
-                      <div className="text-right text-xs font-semibold tabular-nums text-slate-400">
-                        금액 미입력
-                      </div>
+                      <div className="text-right text-xs font-semibold tabular-nums text-slate-400">금액 미입력</div>
                     )
                   }
                   settlement={

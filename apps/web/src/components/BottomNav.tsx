@@ -72,21 +72,41 @@ export default function BottomNav() {
   const [searchParams] = useSearchParams();
   const todayMatch = useMatch("/today/:day");
   const monthMatch = useMatch("/month/:month");
+  const calendarMatch = useMatch("/calendar/:month");
 
   const mainDay = pathname === "/" ? searchParams.get("day") : null;
 
-  let anchor = new Date();
-  if (todayMatch?.params.day && /^\d{4}-\d{2}-\d{2}$/.test(todayMatch.params.day)) {
-    anchor = new Date(`${todayMatch.params.day}T12:00:00`);
-  } else if (monthMatch?.params.month && /^\d{4}-\d{2}$/.test(monthMatch.params.month)) {
-    anchor = new Date(`${monthMatch.params.month}-15T12:00:00`);
-  } else if (mainDay && /^\d{4}-\d{2}-\d{2}$/.test(mainDay)) {
-    anchor = new Date(`${mainDay}T12:00:00`);
-  }
+  /** 오늘 탭: 달력 15일 같은 “월 앵커”를 쓰지 않고, 실제 오늘·이미 보는 일·홈의 day만 반영 */
+  const todayTabAnchor = (() => {
+    if (todayMatch?.params.day && /^\d{4}-\d{2}-\d{2}$/.test(todayMatch.params.day)) {
+      return new Date(`${todayMatch.params.day}T12:00:00`);
+    }
+    if (mainDay && /^\d{4}-\d{2}-\d{2}$/.test(mainDay)) {
+      return new Date(`${mainDay}T12:00:00`);
+    }
+    return new Date();
+  })();
 
-  const todayHref = `/today/${yyyyMmDdLocal(anchor)}`;
-  const monthHref = `/month/${yyyyMmLocal(anchor)}`;
-  const calendarHref = `/calendar/${yyyyMmLocal(anchor)}`;
+  /** 월·달력 탭: 월/달력 화면이면 그 달 기준(중순), 그 외는 오늘 탭과 동일 소스 */
+  const monthNavAnchor = (() => {
+    if (todayMatch?.params.day && /^\d{4}-\d{2}-\d{2}$/.test(todayMatch.params.day)) {
+      return new Date(`${todayMatch.params.day}T12:00:00`);
+    }
+    if (monthMatch?.params.month && /^\d{4}-\d{2}$/.test(monthMatch.params.month)) {
+      return new Date(`${monthMatch.params.month}-15T12:00:00`);
+    }
+    if (calendarMatch?.params.month && /^\d{4}-\d{2}$/.test(calendarMatch.params.month)) {
+      return new Date(`${calendarMatch.params.month}-15T12:00:00`);
+    }
+    if (mainDay && /^\d{4}-\d{2}-\d{2}$/.test(mainDay)) {
+      return new Date(`${mainDay}T12:00:00`);
+    }
+    return new Date();
+  })();
+
+  const todayHref = `/today/${yyyyMmDdLocal(todayTabAnchor)}`;
+  const monthHref = `/month/${yyyyMmLocal(monthNavAnchor)}`;
+  const calendarHref = `/calendar/${yyyyMmLocal(monthNavAnchor)}`;
 
   const itemClass = (active: boolean) =>
     cn(

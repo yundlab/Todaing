@@ -36,7 +36,7 @@ export type TransitLeg =
       amount: string;
     };
 
-export type TransitPayload = {
+type TransitPayload = {
   transitFrom: string | null;
   transitTo: string | null;
   transitVia: string | null;

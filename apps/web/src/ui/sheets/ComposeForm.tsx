@@ -1,27 +1,23 @@
 import type { Dispatch, SetStateAction } from "react";
-import { UsersIcon } from "@/components/icons/index";
+import { UsersIcon } from "@/components/icons";
 import DateMonthInput from "@/components/DateMonthInput";
 import Transit1Fields from "@/components/transit/Transit1Fields";
 import Transit2Fields from "@/components/transit/Transit2Fields";
 import CardInstallmentFields from "@/components/CardInstallmentFields";
 import CategoryCardPreview from "@/components/CategoryCardPreview";
 import { cn } from "@/components/cn";
-import {
-  NATIVE_SELECT_CHEVRON_CLASS_REQUIRED,
-  NATIVE_SELECT_CHEVRON_STYLE
-} from "@/components/nativeSelectChevron";
 import { fieldBorderClass } from "@/components/inputFieldClasses";
-import { pad2 } from "@/domain/date";
+import {
+  COMPOSE_FORM_CATEGORY_SELECT_ARROW_STYLE,
+  COMPOSE_FORM_CATEGORY_SELECT_CLASS
+} from "@/ui/sheets/composeFormConstants";
 import { normalizeFourDigitTimeInput } from "@/domain/time";
 import { formatAmountInputWithCommas } from "@/domain/parseAmountInput";
 import { ALL_CATEGORIES, CATEGORY_GROUPS } from "@/domain/categoryUi";
 import { PAYMENT_TYPE_OPTIONS } from "@/domain/expensePaymentUi";
 import { emptyTransit1Leg, type TransitLeg, type Transit2SegmentDraft } from "@/domain/transitPayload";
 
-const CATEGORY_SELECT_CLASS = cn("flex-1", NATIVE_SELECT_CHEVRON_CLASS_REQUIRED);
-const CATEGORY_SELECT_ARROW_STYLE = NATIVE_SELECT_CHEVRON_STYLE;
-
-export type ComposeFormProps = {
+type ComposeFormProps = {
   composeKind: "expense" | "schedule";
   setComposeKind: Dispatch<SetStateAction<"expense" | "schedule">>;
   composeEditExpenseId: string | null;
@@ -461,8 +457,8 @@ export function ComposeForm(props: ComposeFormProps) {
                     }
                     setEntryCategory(v);
                   }}
-                  className={CATEGORY_SELECT_CLASS}
-                  style={CATEGORY_SELECT_ARROW_STYLE}
+                  className={COMPOSE_FORM_CATEGORY_SELECT_CLASS}
+                  style={COMPOSE_FORM_CATEGORY_SELECT_ARROW_STYLE}
                 >
                   {CATEGORY_GROUPS.map((g) => (
                     <optgroup key={g.label} label={g.label}>

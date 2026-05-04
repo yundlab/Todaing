@@ -62,7 +62,7 @@ export default function SettingsView() {
     setBudgetDraft(
       effectiveMonthlyBudgetWon(editMonthYm, budgetByYm, legacyBudgetFallback).toLocaleString("ko-KR")
     );
-  }, [editMonthYm]);
+  }, [editMonthYm, budgetByYm, legacyBudgetFallback]);
 
   const budgetHint = useMemo(
     () => `현재 금액 ${monthlyBudgetWon.toLocaleString()}원 · 월별로 기기에 저장됩니다(LocalStorage)`,

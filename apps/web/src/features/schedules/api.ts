@@ -21,7 +21,7 @@ export type ScheduleCreateInput = {
   repeatYearly?: boolean;
 };
 
-export type ScheduleListResponse = {
+type ScheduleListResponse = {
   items: ScheduleItem[];
 };
 
@@ -38,7 +38,7 @@ export function createSchedule(input: ScheduleCreateInput): Promise<ScheduleItem
   return http("/api/schedules", { method: "POST", body: JSON.stringify(input) });
 }
 
-export type ScheduleUpdateInput = Partial<ScheduleCreateInput>;
+type ScheduleUpdateInput = Partial<ScheduleCreateInput>;
 
 export function updateSchedule(id: string, input: ScheduleUpdateInput): Promise<ScheduleItem> {
   return http(`/api/schedules/${encodeURIComponent(id)}`, {

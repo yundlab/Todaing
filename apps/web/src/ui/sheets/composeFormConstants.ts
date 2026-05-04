@@ -1,0 +1,8 @@
+import { cn } from "@/components/cn";
+import {
+  NATIVE_SELECT_CHEVRON_CLASS_REQUIRED,
+  NATIVE_SELECT_CHEVRON_STYLE
+} from "@/components/nativeSelectChevron";
+
+export const COMPOSE_FORM_CATEGORY_SELECT_CLASS = cn("flex-1", NATIVE_SELECT_CHEVRON_CLASS_REQUIRED);
+export const COMPOSE_FORM_CATEGORY_SELECT_ARROW_STYLE = NATIVE_SELECT_CHEVRON_STYLE;

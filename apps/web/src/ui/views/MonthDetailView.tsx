@@ -17,7 +17,7 @@ import {
 } from "@/domain/installment";
 import SettlementRow from "@/components/SettlementRow";
 
-export type MonthDetailViewProps = {
+type MonthDetailViewProps = {
   header: ReactNode;
   settlementDialog: ReactNode;
   expenses: Expense[] | undefined;
@@ -26,9 +26,9 @@ export type MonthDetailViewProps = {
   monthKey: string;
   monthlyBudgetWon: number;
   me: string;
-  // eslint-disable-next-line no-unused-vars -- documented callback params
+   
   isNetSettledForDay: (day: string, name: string) => boolean;
-  // eslint-disable-next-line no-unused-vars
+   
   requestToggleNetSettledForDay: (day: string, name: string) => void;
   settlementAllByDay?: Map<string, Map<string, number>>;
   aggregateMode?: AggregateMode;

@@ -1,6 +1,6 @@
 import { normalizeCategory } from "@/domain/categoryUi";
 
-export type CategoryTint = { bg: string; border: string; text: string };
+type CategoryTint = { bg: string; border: string; text: string };
 
 const GROUP_TINT: Record<"fixed" | "food" | "optionalFixed" | "living" | "other", CategoryTint> = {
   fixed: { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-900" },

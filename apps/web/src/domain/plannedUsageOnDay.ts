@@ -22,7 +22,7 @@ export function transit2HasUsageSegmentOnDay(e: Expense, dayKey: string): boolea
  * - 일반 카테고리: 기존 타임라인과 동일
  * - 교통2: 구간 `dayKey`가 이용일과 맞는 행이 없을 때만(구간만 잘못 저장된 경우) 보조 행
  */
-export type PlannedUsageDaySlice = {
+type PlannedUsageDaySlice = {
   startMs: number;
   expense: Expense;
   label: string;

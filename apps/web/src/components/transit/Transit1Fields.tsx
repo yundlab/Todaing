@@ -102,7 +102,6 @@ export default function Transit1Fields({
   requestConfirm: (_message: string, _action: () => void | Promise<void>) => void;
 }) {
   const fieldOptional = cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass());
-  const fieldRequired = cn("w-full rounded-xl bg-white px-3 py-3 text-sm", fieldBorderClass({ required: true }));
 
   useLayoutEffect(() => {
     setLegs((arr) => {

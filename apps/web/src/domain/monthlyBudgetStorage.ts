@@ -1,9 +1,9 @@
 /** @deprecated 월별 키로 이전한 뒤, 값이 있으면 월별 맵에 없는 달의 폴백으로만 사용 */
-export const MONTHLY_BUDGET_LS_KEY = "monthlyBudgetWon";
+const MONTHLY_BUDGET_LS_KEY = "monthlyBudgetWon";
 
 export const MONTHLY_BUDGET_BY_YM_LS_KEY = "monthlyBudgetWonByYm";
 
-export const DEFAULT_MONTHLY_BUDGET_WON = 10_000_000;
+const DEFAULT_MONTHLY_BUDGET_WON = 10_000_000;
 
 /** 기존 단일 예산 키. 없거나 잘못된 값이면 null */
 export function readLegacyMonthlyBudgetWonFromStorage(): number | null {
