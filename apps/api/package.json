@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "eslint .",
+    "knip": "knip",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -29,6 +30,7 @@
     "@typescript-eslint/eslint-plugin": "^8.29.0",
     "eslint": "^9.24.0",
     "globals": "^16.0.0",
+    "knip": "^5.45.0",
     "prisma": "^6.8.2",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
