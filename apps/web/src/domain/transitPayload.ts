@@ -24,6 +24,13 @@ export type TransitLeg =
       to: string;
       /** 금액 입력(콤마 허용) — 저장 시 숫자로 직렬화 */
       amount: string;
+      /** API로 승차 정류장 고를 때만 채움 — 하차 API에서 같은 노선으로 정류장만 조회 */
+      busApiRoute?: {
+        cityCode: string;
+        routeId: string;
+        transitProvider: "tago" | "seoul";
+        routeNo: string;
+      };
     }
   | {
       mode: "SUBWAY";
@@ -67,15 +74,17 @@ function legEndpointName(leg: TransitLeg, side: "from" | "to"): string | null {
 
 function legToSegment(leg: TransitLeg) {
   if (leg.mode === "BUS") {
+    const bus = leg as Extract<TransitLeg, { mode: "BUS" }>;
     return {
       mode: "BUS" as const,
-      start: leg.start,
-      end: leg.end,
-      busNumber: leg.busNumber || null,
-      from: leg.from || null,
-      to: leg.to || null,
+      start: bus.start,
+      end: bus.end,
+      busNumber: bus.busNumber || null,
+      from: bus.from || null,
+      to: bus.to || null,
+      ...(bus.busApiRoute ? { busApiRoute: bus.busApiRoute } : {}),
       amount: (() => {
-        const raw = String(leg.amount ?? "").trim();
+        const raw = String(bus.amount ?? "").trim();
         if (raw === "") return 0;
         const parsed = parseAmountInput(raw);
         return parsed == null ? null : parsed;

@@ -2,6 +2,19 @@ import type { TransitLeg } from "@/domain/transitPayload";
 import { getCapitalMetroStationsSync } from "@/features/transit/stations";
 import { formatAmountInputWithCommas, parseAmountInput } from "@/domain/parseAmountInput";
 
+type BusApiRoutePersisted = NonNullable<Extract<TransitLeg, { mode: "BUS" }>["busApiRoute"]>;
+
+function parsePersistedBusApiRoute(raw: unknown): BusApiRoutePersisted | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const cityCode = String(o.cityCode ?? "").trim();
+  const routeId = String(o.routeId ?? "").trim();
+  if (!cityCode || !routeId) return undefined;
+  const routeNo = String(o.routeNo ?? "").trim();
+  const transitProvider = o.transitProvider === "seoul" ? "seoul" : "tago";
+  return { cityCode, routeId, transitProvider, routeNo };
+}
+
 function stationFromPersistedName(name: string | null | undefined) {
   const all = getCapitalMetroStationsSync();
   if (!all) return null;
@@ -27,6 +40,7 @@ export function transitSegmentToLeg(s: unknown): TransitLeg | null {
   const o = s as Record<string, unknown>;
   const amount = formatPersistedSegmentAmount(o.amount);
   if (o.mode === "BUS") {
+    const busApiRoute = parsePersistedBusApiRoute(o.busApiRoute);
     return {
       mode: "BUS",
       start: String(o.start ?? ""),
@@ -34,7 +48,8 @@ export function transitSegmentToLeg(s: unknown): TransitLeg | null {
       busNumber: String(o.busNumber ?? ""),
       from: String(o.from ?? ""),
       to: String(o.to ?? ""),
-      amount
+      amount,
+      ...(busApiRoute ? { busApiRoute } : {})
     };
   }
   if (o.mode === "SUBWAY") {

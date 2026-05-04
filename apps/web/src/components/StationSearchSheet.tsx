@@ -3,9 +3,18 @@ import { loadCapitalMetroStations, searchStationsCached, type Station } from "@/
 import { cn } from "@/components/cn";
 import { fieldBorderClass } from "@/components/inputFieldClasses";
 
+/** 승차에서 이미 고른 TAGO/서울 노선으로 하차만 고를 때 `route-stops`에 그대로 넘깁니다. */
+export type BusApiRouteReuse = {
+  cityCode: string;
+  routeId: string;
+  transitProvider: "tago" | "seoul";
+  routeNo: string;
+};
+
 export type StationSearchTarget = {
   legIndex: number;
   field: "from" | "to";
+  busReuse?: BusApiRouteReuse;
 };
 
 type Props = {

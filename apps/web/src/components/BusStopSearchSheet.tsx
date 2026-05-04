@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { StationSearchTarget } from "@/components/StationSearchSheet";
+import type { BusApiRouteReuse, StationSearchTarget } from "@/components/StationSearchSheet";
 import { cn } from "@/components/cn";
 import { fieldBorderClass } from "@/components/inputFieldClasses";
 import { HttpError } from "@/lib/http";
@@ -83,7 +83,7 @@ type Step = "routes" | "stops";
 type Props = {
   open: StationSearchTarget | null;
   onClose: () => void;
-  onPick: (_target: StationSearchTarget, _stopLabel: string) => void;
+  onPick: (_target: StationSearchTarget, _stopLabel: string, _busApiContext?: BusApiRouteReuse) => void;
 };
 
 export default function BusStopSearchSheet({ open, onClose, onPick }: Props) {
@@ -99,6 +99,8 @@ export default function BusStopSearchSheet({ open, onClose, onPick }: Props) {
   /** 도시 목록 필터 (선택값과 별도 — 입력 중 덮어쓰기 방지) */
   const [cityFilter, setCityFilter] = useState("");
   const [broadSearchPending, setBroadSearchPending] = useState(false);
+  /** 하차 재사용 모드에서 「노선 다시 선택」으로 전체 검색으로 넘길 때 */
+  const [reuseBypass, setReuseBypass] = useState(false);
 
   const resetForOpen = useCallback(() => {
     setStep("routes");
@@ -115,12 +117,61 @@ export default function BusStopSearchSheet({ open, onClose, onPick }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setReuseBypass(false);
+      return;
+    }
+    const fastToStops =
+      open.field === "to" && Boolean(String(open.busReuse?.routeId ?? "").trim()) && !reuseBypass;
+    if (fastToStops) {
+      const reuse = open.busReuse!;
+      let cancelled = false;
+      void (async () => {
+        setLoading(true);
+        setError(null);
+        setBroadSearchPending(false);
+        setRoutes([]);
+        setCityCode(reuse.cityCode);
+        setRouteNoInput(reuse.routeNo);
+        const synthetic: TagoRouteSummary = {
+          routeId: reuse.routeId,
+          routeNo: reuse.routeNo,
+          routeType: "",
+          startNode: "",
+          endNode: "",
+          cityCode: reuse.cityCode,
+          transitProvider: reuse.transitProvider
+        };
+        setSelectedRoute(synthetic);
+        setStops([]);
+        setStep("stops");
+        try {
+          const list = await fetchTagoRouteStops(reuse.cityCode, reuse.routeId, {
+            transitProvider: reuse.transitProvider
+          });
+          if (cancelled) return;
+          setStops(list);
+          if (!list.length) setError("이 노선에 정류장 정보가 없어요.");
+        } catch (e: unknown) {
+          if (cancelled) return;
+          const msg =
+            e instanceof HttpError ? e.message : e instanceof Error ? e.message : String(e);
+          setError(msg);
+          setSelectedRoute(null);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
     resetForOpen();
-  }, [open, resetForOpen]);
+  }, [open, reuseBypass, resetForOpen]);
 
   useEffect(() => {
     if (!open) return;
+    if (open.field === "to" && String(open.busReuse?.routeId ?? "").trim() && !reuseBypass) return;
     let cancelled = false;
     (async () => {
       if (cities !== null) return;
@@ -148,12 +199,23 @@ export default function BusStopSearchSheet({ open, onClose, onPick }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, cities]);
+  }, [open, cities, reuseBypass]);
 
   const title = useMemo(() => {
     if (!open) return "";
-    return open.field === "from" ? "승차 정류장 (공공 API)" : "하차 정류장 (공공 API)";
-  }, [open]);
+    if (open.field === "from") return "승차 정류장";
+    if (open.busReuse?.routeId && !reuseBypass) return "하차 정류장 (같은 노선)";
+    return "하차 정류장";
+  }, [open, reuseBypass]);
+
+  const subtitle = useMemo(() => {
+    if (!open) return "";
+    if (step === "routes") return "시·군·구(도시)와 노선 번호로 검색한 뒤, 노선·정류장을 고릅니다.";
+    if (open.field === "to" && open.busReuse?.routeId && !reuseBypass) {
+      return `${open.busReuse.routeNo}번 — 하차할 정류장만 골라 주세요.`;
+    }
+    return `${selectedRoute?.routeNo ?? ""}번 경유 정류장`;
+  }, [open, reuseBypass, selectedRoute?.routeNo, step]);
 
   const filteredCities = useMemo(() => {
     if (!cities?.length) return [];
@@ -297,14 +359,20 @@ export default function BusStopSearchSheet({ open, onClose, onPick }: Props) {
 
   const pickStop = (s: TagoBusStop) => {
     if (!open || !selectedRoute) return;
-    const no = selectedRoute.routeNo.trim();
-    const label =
-      s.nodeNo && s.nodeNm
-        ? `${s.nodeNm} (${no}번 · 정류장번호 ${s.nodeNo})`
-        : s.nodeNm
-          ? `${s.nodeNm} (${no}번)`
-          : `${no}번 노선`;
-    onPick(open, label);
+    /** 목록에는 번호·ARS를 보여 주되, 폼/지출 카드에는 `출발지 → 목적지`만 남기도록 정류장명만 저장합니다. */
+    const label = (s.nodeNm || "").trim() || "정류장";
+    const cc = (selectedRoute.cityCode ?? cityCode).trim();
+    const routeId = String(selectedRoute.routeId ?? "").trim();
+    const busApiContext: BusApiRouteReuse | undefined =
+      open.field === "from" && cc && routeId
+        ? {
+            cityCode: cc,
+            routeId,
+            transitProvider: selectedRoute.transitProvider ?? "tago",
+            routeNo: selectedRoute.routeNo.trim()
+          }
+        : undefined;
+    onPick(open, label, busApiContext);
   };
 
   if (!open) return null;
@@ -317,18 +385,23 @@ export default function BusStopSearchSheet({ open, onClose, onPick }: Props) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold">{title}</div>
-              <div className="mt-1 text-xs text-slate-500">
-                {step === "routes"
-                  ? "시·군·구(도시)와 노선 번호로 검색한 뒤, 노선·정류장을 고릅니다."
-                  : `${selectedRoute?.routeNo ?? ""}번 경유 정류장`}
-              </div>
+              <div className="mt-1 text-xs text-slate-500">{subtitle}</div>
             </div>
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-transparent text-slate-500 transition-colors hover:bg-transparent hover:text-indigo-600 active:scale-[0.99]"
               onClick={onClose}
+              aria-label="닫기"
             >
-              닫기
+              <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+                <path
+                  d="M6 6l12 12M18 6L6 18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+              </svg>
             </button>
           </div>
 
@@ -337,14 +410,23 @@ export default function BusStopSearchSheet({ open, onClose, onPick }: Props) {
               <button
                 type="button"
                 className="mb-3 text-xs font-semibold text-indigo-600"
+                disabled={loading}
                 onClick={() => {
-                  setStep("routes");
                   setStops([]);
                   setSelectedRoute(null);
+                  if (open?.field === "to" && open?.busReuse?.routeId && !reuseBypass) {
+                    setReuseBypass(true);
+                  }
+                  setStep("routes");
                 }}
               >
                 ← 노선 다시 선택
               </button>
+              {loading && !stops.length ? (
+                <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  정류장을 불러오는 중…
+                </div>
+              ) : null}
               <ul className="space-y-2">
                 {stops.map((s) => (
                   <li key={`${s.nodeId || s.seq}-${s.seq}`}>

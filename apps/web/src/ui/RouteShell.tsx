@@ -905,7 +905,18 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
           }}
           onOpenBusStopSearch={(legIndex, field) => {
             setStationSearchOpen(null);
-            setBusStopSearchOpen({ legIndex, field });
+            const leg = transitLegs[legIndex];
+            const busLeg = leg?.mode === "BUS" ? (leg as Extract<TransitLeg, { mode: "BUS" }>) : null;
+            const b = busLeg?.busApiRoute;
+            const busReuse =
+              field === "to" &&
+              busLeg &&
+              b &&
+              String(b.routeId ?? "").trim() &&
+              String(b.cityCode ?? "").trim()
+                ? b
+                : undefined;
+            setBusStopSearchOpen(busReuse ? { legIndex, field, busReuse } : { legIndex, field });
           }}
         />
       </ComposeSheet>
@@ -955,14 +966,27 @@ export default function RouteShell({ view }: { view: "main" | "today" | "month" 
       <BusStopSearchSheet
         open={busStopSearchOpen}
         onClose={() => setBusStopSearchOpen(null)}
-        onPick={(target, stopLabel) => {
+        onPick={(target, stopLabel, busApiContext) => {
           setTransitLegs((arr) => {
             const next = [...arr];
             const leg = next[target.legIndex];
             if (!leg || leg.mode !== "BUS") return next;
             const cur = leg as Extract<TransitLeg, { mode: "BUS" }>;
-            next[target.legIndex] =
-              target.field === "from" ? { ...cur, from: stopLabel } : { ...cur, to: stopLabel };
+            if (target.field === "from") {
+              const rn = busApiContext?.routeNo?.trim() ?? "";
+              next[target.legIndex] = {
+                ...cur,
+                from: stopLabel,
+                ...(busApiContext
+                  ? {
+                      busApiRoute: busApiContext,
+                      ...(rn ? { busNumber: rn } : {})
+                    }
+                  : { busApiRoute: undefined })
+              };
+            } else {
+              next[target.legIndex] = { ...cur, to: stopLabel };
+            }
             return next;
           });
           setBusStopSearchOpen(null);
