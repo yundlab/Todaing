@@ -4,7 +4,7 @@ function b64url(buf: Buffer): string {
   return buf.toString("base64url");
 }
 
-export type AuthTokenPayload = {
+type AuthTokenPayload = {
   sub: string;
   email: string;
   name: string;

@@ -35,14 +35,14 @@ export function tagoBusCityDisplayName(cityCode: string, rawName: string): strin
 }
 
 /** 낮을수록 목록 상단(서울·광역시·그 외 가나다) */
-export function tagoBusCitySortRank(displayName: string): number {
+function tagoBusCitySortRank(displayName: string): number {
   if (displayName.startsWith("서울특별")) return 0;
   if (/(광역시|특별자치시|특별자치도)$/.test(displayName)) return 1;
   return 2;
 }
 
 /** TAGO 목록에 빠지는 광역·특별시행정구역을 `citycode`로 보강할 때 사용(정렬 순서 고정) */
-export const TAGO_METRO_FALLBACK_ORDER: Array<{ cityCode: string; cityName: string }> = [
+const TAGO_METRO_FALLBACK_ORDER: Array<{ cityCode: string; cityName: string }> = [
   { cityCode: "11", cityName: "서울특별시" },
   { cityCode: "12", cityName: "세종특별자치시" },
   { cityCode: "21", cityName: "부산광역시" },
