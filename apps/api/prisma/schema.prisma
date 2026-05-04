@@ -101,4 +101,3 @@ enum PaymentType {
   ACCOUNT
   ETC
 }
-

@@ -27,7 +27,11 @@ export function tagoBusCityDisplayName(cityCode: string, rawName: string): strin
   if (name === "부산" || name === "부산시") return "부산광역시";
   if (name === "대구" || name === "대구시") return "대구광역시";
   if (name === "인천" || name === "인천시") return "인천광역시";
-  if (name === "광주" || name === "광주시") return "광주광역시";
+  /**
+   * `광주시`·`광주`를 무조건 광주광역시로 바꾸지 않습니다. **경기도 광주시**도 `광주시`라서
+   * TAGO `citycode`가 경기 쪽인데 표기만 `광주시`일 때 광역시로 잘못 붙습니다.
+   * 광주광역시(행정코드 24)는 `CODE_TO_LABEL` / `byCode` 분기로만 확정합니다.
+   */
   if (name === "대전" || name === "대전시") return "대전광역시";
   if (name === "울산" || name === "울산시") return "울산광역시";
   if (name === "제주" || name === "제주시" || name === "제주도") return "제주특별자치도";
