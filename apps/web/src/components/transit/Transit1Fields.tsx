@@ -10,7 +10,7 @@ import {
   type SubwayLinePickContext
 } from "@/domain/transitSubwayLines";
 import { normalizeFourDigitTimeInput } from "@/domain/time";
-import { emptyTransit1Leg } from "@/domain/transitPayload";
+import { emptyTransit1Leg, type TransitLeg } from "@/domain/transitPayload";
 import { formatAmountInputWithCommas, parseAmountInput } from "@/domain/parseAmountInput";
 import { formatWon } from "@/domain/settlement";
 
@@ -51,50 +51,8 @@ export default function Transit1Fields({
   openBusStopSearch,
   requestConfirm
 }: {
-  legs: Array<
-    | {
-        mode: "BUS";
-        start: string;
-        end: string;
-        busNumber: string;
-        from: string;
-        to: string;
-        amount: string;
-      }
-    | {
-        mode: "SUBWAY";
-        start: string;
-        end: string;
-        from: Station | null;
-        to: Station | null;
-        line: string;
-        amount: string;
-      }
-  >;
-  setLegs: React.Dispatch<
-    React.SetStateAction<
-      Array<
-        | {
-            mode: "BUS";
-            start: string;
-            end: string;
-            busNumber: string;
-            from: string;
-            to: string;
-            amount: string;
-          }
-        | {
-            mode: "SUBWAY";
-            start: string;
-            end: string;
-            from: Station | null;
-            to: Station | null;
-            line: string;
-            amount: string;
-          }
-      >
-    >
-  >;
+  legs: TransitLeg[];
+  setLegs: React.Dispatch<React.SetStateAction<TransitLeg[]>>;
 
   openStationSearch: (_legIndex: number, _field: "from" | "to") => void;
   openBusStopSearch: (_legIndex: number, _field: "from" | "to") => void;
@@ -275,7 +233,9 @@ export default function Transit1Fields({
                     onChange={(e) =>
                       setLegs((arr) => {
                         const next = [...arr];
-                        next[idx] = { ...(next[idx] as any), busNumber: e.target.value };
+                        const prev = next[idx] as Extract<TransitLeg, { mode: "BUS" }>;
+                        /** 버스번호만 바꿔도 승차 API로 잡은 `busApiRoute`는 유지 — 하차 정류장(같은 노선) 재사용에 필요 */
+                        next[idx] = { ...prev, busNumber: e.target.value };
                         return next;
                       })
                     }
@@ -299,7 +259,8 @@ export default function Transit1Fields({
                     onChange={(e) =>
                       setLegs((arr) => {
                         const next = [...arr];
-                        next[idx] = { ...(next[idx] as any), from: e.target.value };
+                        const prev = next[idx] as Extract<TransitLeg, { mode: "BUS" }>;
+                        next[idx] = { ...prev, from: e.target.value, busApiRoute: undefined };
                         return next;
                       })
                     }
@@ -420,7 +381,7 @@ export default function Transit1Fields({
             )}
 
             <label className="mt-2 block">
-              <div className="mb-1 text-xs text-slate-400">금액 · 환승 구간은 0원 가능</div>
+              <div className="mb-1 text-xs text-slate-400">금액</div>
               <input
                 inputMode="numeric"
                 value={String((leg as { amount?: string }).amount ?? "")}
@@ -434,7 +395,7 @@ export default function Transit1Fields({
                     return next;
                   })
                 }
-                placeholder="예: 1,500 또는 0"
+                placeholder="예: 1,500"
                 className={fieldOptional}
               />
             </label>
