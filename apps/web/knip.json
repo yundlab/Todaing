@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "vite": true,
+  "entry": ["src/components/icons/scriptSnippetIconSurface.ts"],
+  "ignore": ["scripts/**"]
+}
