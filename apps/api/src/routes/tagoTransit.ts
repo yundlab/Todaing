@@ -5,9 +5,23 @@ import {
   fetchSeoulBusRoutesByRouteNo,
   fetchSeoulBusStationsByRoute,
   type SeoulBusRouteRow
-} from "../seoulBusWs.js";
+} from "../seoulBusWebSocket.js";
 
 const TAGO_BASE = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService";
+
+function missingTagoServiceKeyHint(): string {
+  if (process.env.NODE_ENV === "production") {
+    return "버스 정류장 검색을 쓰려면 API 서버 호스트의 환경 변수 TAGO_SERVICE_KEY에 공공데이터포털(data.go.kr) 일반 인증키를 설정하세요.";
+  }
+  return "버스 공공 API를 쓰려면 apps/api/.env에 TAGO_SERVICE_KEY(공공데이터포털 인증키)를 설정하세요.";
+}
+
+function missingSeoulBusServiceKeysHint(): string {
+  if (process.env.NODE_ENV === "production") {
+    return "서울 버스 정류장 조회를 쓰려면 API 서버에 TAGO_SERVICE_KEY 또는 SEOUL_BUS_SERVICE_KEY(공공데이터포털 일반키)를 설정하세요.";
+  }
+  return "서울 버스 정류장 조회에는 apps/api/.env에 TAGO_SERVICE_KEY 또는 SEOUL_BUS_SERVICE_KEY(공공데이터포털 일반키)를 설정하세요.";
+}
 
 function tagoHeader(json: unknown): { code: string; msg: string } {
   const r = json as Record<string, unknown>;
@@ -354,9 +368,7 @@ tagoTransitRouter.get("/city-codes", async (_req, res) => {
     const status = (e as Error & { status?: number }).status ?? 500;
     const message = e instanceof Error ? e.message : String(e);
     if (message === "TAGO_SERVICE_KEY_MISSING") {
-      return res.status(503).json({
-        error: "버스 공공 API를 쓰려면 apps/api/.env에 TAGO_SERVICE_KEY(공공데이터포털 인증키)를 설정하세요."
-      });
+      return res.status(503).json({ error: missingTagoServiceKeyHint() });
     }
     return res.status(status).json({ error: message });
   }
@@ -387,9 +399,7 @@ tagoTransitRouter.get("/routes", async (req, res) => {
     const status = (e as Error & { status?: number }).status ?? 500;
     const message = e instanceof Error ? e.message : String(e);
     if (message === "TAGO_SERVICE_KEY_MISSING") {
-      return res.status(503).json({
-        error: "버스 공공 API를 쓰려면 apps/api/.env에 TAGO_SERVICE_KEY를 설정하세요."
-      });
+      return res.status(503).json({ error: missingTagoServiceKeyHint() });
     }
     return res.status(status).json({ error: message });
   }
@@ -470,9 +480,7 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
     const status = (e as Error & { status?: number }).status ?? 500;
     const message = e instanceof Error ? e.message : String(e);
     if (message === "TAGO_SERVICE_KEY_MISSING") {
-      return res.status(503).json({
-        error: "버스 공공 API를 쓰려면 apps/api/.env에 TAGO_SERVICE_KEY를 설정하세요."
-      });
+      return res.status(503).json({ error: missingTagoServiceKeyHint() });
     }
     return res.status(status).json({ error: message });
   }
@@ -489,9 +497,7 @@ tagoTransitRouter.get("/route-stops", async (req, res) => {
     }
     const sk = effectiveSeoulBusKey();
     if (!sk) {
-      return res.status(503).json({
-        error: "서울 버스 정류장 조회에는 apps/api/.env에 TAGO_SERVICE_KEY 또는 SEOUL_BUS_SERVICE_KEY(공공데이터포털 일반키)를 설정하세요."
-      });
+      return res.status(503).json({ error: missingSeoulBusServiceKeysHint() });
     }
     try {
       const rows = await fetchSeoulBusStationsByRoute(sk, routeId);
@@ -537,9 +543,7 @@ tagoTransitRouter.get("/route-stops", async (req, res) => {
     const status = (e as Error & { status?: number }).status ?? 500;
     const message = e instanceof Error ? e.message : String(e);
     if (message === "TAGO_SERVICE_KEY_MISSING") {
-      return res.status(503).json({
-        error: "버스 공공 API를 쓰려면 apps/api/.env에 TAGO_SERVICE_KEY를 설정하세요."
-      });
+      return res.status(503).json({ error: missingTagoServiceKeyHint() });
     }
     return res.status(status).json({ error: message });
   }

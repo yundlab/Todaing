@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- ambient merge: Express/Request are type positions only */
 export {};
 
 declare global {
