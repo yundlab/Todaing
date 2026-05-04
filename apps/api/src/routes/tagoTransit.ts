@@ -2,10 +2,10 @@ import { Router } from "express";
 import { mergeTagoMetroFallback, tagoBusCityDisplayName } from "../tagoBusCityDisplay.js";
 import { env } from "../env.js";
 import {
-  fetchSeoulBusRoutesByRouteNo,
-  fetchSeoulBusStationsByRoute,
+  fetchSeoulOpenBusStationsByRouteId,
+  searchSeoulOpenDataBusRoutesByRouteNo,
   type SeoulBusRouteRow
-} from "../seoulBusWebSocket.js";
+} from "../seoulOpenDataPlaza.js";
 
 const TAGO_BASE = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService";
 
@@ -16,11 +16,11 @@ function missingTagoServiceKeyHint(): string {
   return "버스 공공 API를 쓰려면 apps/api/.env에 TAGO_SERVICE_KEY(공공데이터포털 인증키)를 설정하세요.";
 }
 
-function missingSeoulBusServiceKeysHint(): string {
+function missingSeoulOpenDataPlazaKeyHint(): string {
   if (process.env.NODE_ENV === "production") {
-    return "서울 버스 정류장 조회를 쓰려면 API 서버에 TAGO_SERVICE_KEY 또는 SEOUL_BUS_SERVICE_KEY(공공데이터포털 일반키)를 설정하세요.";
+    return "서울 시내버스(ws·provider=seoul) 정류장 목록을 쓰려면 API 서버에 SEOUL_OPEN_DATA_PLAZA_KEY(서울 열린데이터광장)를 설정하세요.";
   }
-  return "서울 버스 정류장 조회에는 apps/api/.env에 TAGO_SERVICE_KEY 또는 SEOUL_BUS_SERVICE_KEY(공공데이터포털 일반키)를 설정하세요.";
+  return "서울 시내버스 정류장 목록은 apps/api/.env의 SEOUL_OPEN_DATA_PLAZA_KEY(열린데이터광장 openapi.seoul.go.kr)가 필요합니다.";
 }
 
 function tagoHeader(json: unknown): { code: string; msg: string } {
@@ -176,35 +176,12 @@ type TransitProvider = "tago" | "seoul";
 
 type TagoRouteWithSearchCity = TagoRouteRow & { cityCode: string; transitProvider: TransitProvider };
 
-function seoulBusKey(): string {
-  return (env.SEOUL_BUS_SERVICE_KEY ?? "").trim().replace(/^["']|["']$/g, "");
+function seoulOpenDataPlazaKey(): string {
+  return (env.SEOUL_OPEN_DATA_PLAZA_KEY ?? "").trim().replace(/^["']|["']$/g, "");
 }
 
-function tagoServiceKey(): string {
-  return (env.TAGO_SERVICE_KEY ?? "").trim().replace(/^["']|["']$/g, "");
-}
-
-/** `SEOUL_BUS_SERVICE_KEY`가 비어 있으면 TAGO 일반키로 시도(계정당 키 1개인 경우) */
-function effectiveSeoulBusKey(): string {
-  const s = seoulBusKey();
-  return s || tagoServiceKey();
-}
-
-/** 동일 계정이면 TAGO·서울 API에 표시되는 일반 인증키 문자열이 같을 수 있음 — 활용신청(승인)이 서비스마다 따로임 */
-function wrapSeoulAuthError(err: unknown): Error {
-  const m = err instanceof Error ? err.message : String(err);
-  if (/NOT REGISTERED|Key인증실패|SERVICE KEY IS NOT REGISTERED/i.test(m)) {
-    const e = new Error(
-      `${m} 「서울특별시_노선정보조회」승인·ws.bus 연동을 확인하세요. 포털의 Encoding 키(% 포함)와 Decoding 키를 바꿔 .env에 넣어 보세요(서버가 여러 붙임 방식으로 시도합니다). 계정당 일반키 문자열은 TAGO와 같을 수 있습니다. 승인 직후 게이트 반영이 늦을 수 있습니다.`
-    );
-    (e as Error & { status: number }).status = 502;
-    return e;
-  }
-  return err instanceof Error ? err : new Error(m);
-}
-
-/** TAGO `11` 또는 서울 행정구역 5자리(11xxxx) — 시내버스는 ws.bus.go.kr 로 보완 */
-function shouldUseSeoulBusWs(cityCode: string): boolean {
+/** TAGO `11` 또는 서울 행정구역 5자리(11xxxx) — 열린데이터광장 키가 있으면 서울 시내버스를 여기서 우선 처리 */
+function shouldUseSeoulOpenDataRoutes(cityCode: string): boolean {
   const c = cityCode.trim();
   if (c === "11") return true;
   return /^11\d{3}$/.test(c);
@@ -257,13 +234,14 @@ async function fetchRouteNoListAcrossCityCodes(
   return out;
 }
 
-function appendSeoulBusRoutesToTago(
-  tagoRows: TagoRouteWithSearchCity[],
+/** 서울 열린데이터광장 노선을 먼저 두고, TAGO는 같은 `routeId`는 제외해 뒤에 붙입니다. */
+function mergeSeoulOpenRoutesFirst(
   seoulRows: SeoulBusRouteRow[],
+  tagoRows: TagoRouteWithSearchCity[],
   maxRoutes: number
 ): TagoRouteWithSearchCity[] {
-  const seen = new Set(tagoRows.map((r) => r.routeId));
-  const out = [...tagoRows];
+  const seen = new Set<string>();
+  const out: TagoRouteWithSearchCity[] = [];
   for (const s of seoulRows) {
     if (out.length >= maxRoutes) break;
     if (!s.busRouteId || seen.has(s.busRouteId)) continue;
@@ -277,6 +255,12 @@ function appendSeoulBusRoutesToTago(
       cityCode: "11",
       transitProvider: "seoul"
     });
+  }
+  for (const t of tagoRows) {
+    if (out.length >= maxRoutes) break;
+    if (seen.has(t.routeId)) continue;
+    seen.add(t.routeId);
+    out.push(t);
   }
   return out;
 }
@@ -294,8 +278,17 @@ function parseCitiesFromTagoItems(items: Record<string, unknown>[]): TagoCityRow
   return mergeTagoMetroFallback([...byCode.values()]);
 }
 
+/** TAGO 시·군·구 목록은 자주 바뀌지 않아 짧게 캐시해 `/city-codes`·넓게 찾기 부하를 줄입니다. */
+const CITY_CODE_LIST_TTL_MS = 30 * 60 * 1000;
+let cityCodeListCache: { expiresAt: number; rows: Record<string, unknown>[] } | null = null;
+
 /** `getCtyCodeList` 는 `totalCount` 초과분이 잘리므로 페이지를 이어 받습니다. */
 async function fetchAllCtyCodeListRows(): Promise<Record<string, unknown>[]> {
+  const now = Date.now();
+  if (cityCodeListCache && cityCodeListCache.expiresAt > now) {
+    return cityCodeListCache.rows;
+  }
+
   const PAGE = 500;
   const acc: Record<string, unknown>[] = [];
   let pageNo = 1;
@@ -312,6 +305,8 @@ async function fetchAllCtyCodeListRows(): Promise<Record<string, unknown>[]> {
     pageNo += 1;
     if (pageNo > 250) break;
   }
+
+  cityCodeListCache = { expiresAt: now + CITY_CODE_LIST_TTL_MS, rows: acc };
   return acc;
 }
 
@@ -382,19 +377,37 @@ tagoTransitRouter.get("/routes", async (req, res) => {
   }
   try {
     const trials = routeSearchCityCodes(cityCode);
-    let routes = await fetchRouteNoListAcrossCityCodes(trials, routeNo, { parallel: 8, maxRoutes: 100 });
-    if (shouldUseSeoulBusWs(cityCode)) {
-      const sk = effectiveSeoulBusKey();
-      if (sk) {
-        try {
-          const seoul = await fetchSeoulBusRoutesByRouteNo(sk, routeNo);
-          routes = appendSeoulBusRoutesToTago(routes, seoul, 100);
-        } catch (seoulErr) {
-          if (!routes.length) throw wrapSeoulAuthError(seoulErr);
-        }
+    const openPlaza = seoulOpenDataPlazaKey();
+    const useSeoulOpen = shouldUseSeoulOpenDataRoutes(cityCode) && !!openPlaza;
+    const tagoKey = (env.TAGO_SERVICE_KEY ?? "").trim().replace(/^["']|["']$/g, "");
+
+    if (!useSeoulOpen && !tagoKey) {
+      return res.status(503).json({ error: missingTagoServiceKeyHint() });
+    }
+
+    let tagoRoutes: TagoRouteWithSearchCity[] = [];
+    if (tagoKey) {
+      try {
+        tagoRoutes = await fetchRouteNoListAcrossCityCodes(trials, routeNo, { parallel: 8, maxRoutes: 100 });
+      } catch {
+        tagoRoutes = [];
       }
     }
-    return res.json({ routes });
+
+    if (useSeoulOpen) {
+      let seoulRows: SeoulBusRouteRow[] = [];
+      try {
+        seoulRows = await searchSeoulOpenDataBusRoutesByRouteNo(openPlaza, routeNo, {
+          maxPages: 40,
+          maxRoutes: 100
+        });
+      } catch {
+        seoulRows = [];
+      }
+      return res.json({ routes: mergeSeoulOpenRoutesFirst(seoulRows, tagoRoutes, 100) });
+    }
+
+    return res.json({ routes: tagoRoutes });
   } catch (e: unknown) {
     const status = (e as Error & { status?: number }).status ?? 500;
     const message = e instanceof Error ? e.message : String(e);
@@ -416,31 +429,57 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
   }
   const maxCitiesRaw = typeof req.query.maxCities === "string" ? Number.parseInt(req.query.maxCities, 10) : 140;
   const maxCities = Number.isFinite(maxCitiesRaw) ? Math.min(260, Math.max(20, maxCitiesRaw)) : 140;
-  const CONCURRENCY = 6;
+  const CONCURRENCY = 10;
   const MAX_ROUTES = 80;
 
   try {
     const rows = await fetchAllCtyCodeListRows();
-    const cities = parseCitiesFromTagoItems(rows).slice(0, maxCities);
+    const allCities = parseCitiesFromTagoItems(rows);
+    const cities = allCities.slice(0, maxCities);
+    const cityCodeToName = new Map(allCities.map((c) => [c.cityCode.trim(), c.cityName]));
 
-    const skSeoul = effectiveSeoulBusKey();
-    const seoulRouteCache = new Map<string, SeoulBusRouteRow[]>();
-    const loadSeoulRoutesCached = async (no: string) => {
-      if (!skSeoul) return [] as SeoulBusRouteRow[];
-      if (seoulRouteCache.has(no)) return seoulRouteCache.get(no)!;
-      try {
-        const list = await fetchSeoulBusRoutesByRouteNo(skSeoul, no);
-        seoulRouteCache.set(no, list);
-        return list;
-      } catch {
-        seoulRouteCache.set(no, []);
-        return [];
-      }
+    const displayCityNameForRoute = (routeCityCode: string | undefined, anchorName: string): string => {
+      const cc = (routeCityCode ?? "").trim();
+      if (!cc) return anchorName;
+      const fromList = cityCodeToName.get(cc);
+      if (fromList) return fromList;
+      const fromMetro = tagoBusCityDisplayName(cc, "").trim();
+      if (fromMetro) return fromMetro;
+      return anchorName;
     };
+
+    const openPlazaBroad = seoulOpenDataPlazaKey();
+    let seoulOpenSpine: SeoulBusRouteRow[] = [];
+    if (openPlazaBroad) {
+      try {
+        seoulOpenSpine = await searchSeoulOpenDataBusRoutesByRouteNo(openPlazaBroad, routeNo, {
+          maxPages: 45,
+          maxRoutes: MAX_ROUTES
+        });
+      } catch {
+        seoulOpenSpine = [];
+      }
+    }
+    const openRouteIds = new Set(seoulOpenSpine.map((s) => s.busRouteId).filter(Boolean));
+    const seoulMetroLabel = displayCityNameForRoute("11", "서울특별시");
 
     const routesBroad: Array<
       TagoRouteRow & { cityCode: string; cityName: string; transitProvider: TransitProvider }
     > = [];
+
+    for (const s of seoulOpenSpine) {
+      if (!s.busRouteId || routesBroad.length >= MAX_ROUTES) break;
+      routesBroad.push({
+        routeId: s.busRouteId,
+        routeNo: s.busRouteNm,
+        routeType: s.routeTypeLabel || s.routeTypeRaw || "",
+        startNode: s.stStationNm,
+        endNode: s.edStationNm,
+        cityCode: "11",
+        cityName: seoulMetroLabel,
+        transitProvider: "seoul"
+      });
+    }
 
     outer: for (let i = 0; i < cities.length; i += CONCURRENCY) {
       if (routesBroad.length >= MAX_ROUTES) break;
@@ -450,9 +489,8 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
           try {
             const trials = routeSearchCityCodes(city.cityCode);
             let rows = await fetchRouteNoListAcrossCityCodes(trials, routeNo, { parallel: 6, maxRoutes: 40 });
-            if (shouldUseSeoulBusWs(city.cityCode)) {
-              const seoulRows = await loadSeoulRoutesCached(routeNo);
-              rows = appendSeoulBusRoutesToTago(rows, seoulRows, 40);
+            if (shouldUseSeoulOpenDataRoutes(city.cityCode) && openRouteIds.size) {
+              rows = rows.filter((r) => !openRouteIds.has(r.routeId));
             }
             return rows.map((r) => ({
               routeId: r.routeId,
@@ -461,7 +499,7 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
               startNode: r.startNode,
               endNode: r.endNode,
               cityCode: r.cityCode,
-              cityName: city.cityName,
+              cityName: displayCityNameForRoute(r.cityCode, city.cityName),
               transitProvider: r.transitProvider
             }));
           } catch {
@@ -475,7 +513,7 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
       }
     }
 
-    return res.json({ routes: routesBroad });
+    return res.json({ routes: routesBroad.slice(0, MAX_ROUTES) });
   } catch (e: unknown) {
     const status = (e as Error & { status?: number }).status ?? 500;
     const message = e instanceof Error ? e.message : String(e);
@@ -495,12 +533,15 @@ tagoTransitRouter.get("/route-stops", async (req, res) => {
     if (!routeId) {
       return res.status(400).json({ error: "routeId가 필요합니다." });
     }
-    const sk = effectiveSeoulBusKey();
-    if (!sk) {
-      return res.status(503).json({ error: missingSeoulBusServiceKeysHint() });
+    const openPlaza = seoulOpenDataPlazaKey();
+    if (!openPlaza) {
+      return res.status(503).json({ error: missingSeoulOpenDataPlazaKeyHint() });
     }
     try {
-      const rows = await fetchSeoulBusStationsByRoute(sk, routeId);
+      const rows = await fetchSeoulOpenBusStationsByRouteId(openPlaza, routeId, { maxPages: 72 });
+      if (!rows.length) {
+        return res.status(404).json({ error: "이 노선의 정류장 목록을 찾지 못했어요." });
+      }
       const stops = rows.map((row) => ({
         seq: row.seq,
         nodeNo: row.stationNo,
@@ -509,9 +550,9 @@ tagoTransitRouter.get("/route-stops", async (req, res) => {
       }));
       return res.json({ stops });
     } catch (e: unknown) {
-      const wrapped = wrapSeoulAuthError(e);
-      const status = (wrapped as Error & { status?: number }).status ?? 500;
-      return res.status(status).json({ error: wrapped.message });
+      const status = (e as Error & { status?: number }).status ?? 500;
+      const message = e instanceof Error ? e.message : String(e);
+      return res.status(status).json({ error: message });
     }
   }
 
@@ -521,7 +562,8 @@ tagoTransitRouter.get("/route-stops", async (req, res) => {
   try {
     const all: Record<string, unknown>[] = [];
     for (let pageNo = 1; pageNo <= 30; pageNo += 1) {
-      const { items } = await tagoGet("getRouteAcctoBusSttnList", {
+      // `getRouteAcctoBusSttnList` 는 엔드포인트가 없어 404(HTML)가 나옵니다. 경유정류소 조회는 `getRouteAcctoThrghSttnList` 가 맞습니다.
+      const { items } = await tagoGet("getRouteAcctoThrghSttnList", {
         cityCode,
         routeId,
         numOfRows: "500",

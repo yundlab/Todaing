@@ -7,8 +7,8 @@ const envSchema = z.object({
   WEB_ORIGIN: z.string().default("http://localhost:5176"),
   /** 국토교통부 TAGO(버스 노선·정류장) 프록시 — 빈 문자열이면 해당 API 비활성 */
   TAGO_SERVICE_KEY: z.string().default(""),
-  /** 서울시 ws.bus.go.kr 노선·정류장 — TAGO에 없는 서울 시내버스 보완(공공데이터포털 별도 활용신청 키) */
-  SEOUL_BUS_SERVICE_KEY: z.string().default(""),
+  /** 서울 열린데이터광장 `openapi.seoul.go.kr` — `busRteInfo`/`busRoute` 등(경로에 키 삽입). 비우면 서울 노선은 TAGO만 */
+  SEOUL_OPEN_DATA_PLAZA_KEY: z.string().default(""),
   DATABASE_URL: z
     .string()
     .min(
