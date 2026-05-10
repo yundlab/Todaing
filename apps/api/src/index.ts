@@ -42,8 +42,9 @@ const corsMiddleware = cors({
     // allow explicit configured origin
     if (origin === env.WEB_ORIGIN) return cb(null, true);
 
-    // dev convenience: allow any localhost port (Vite may auto-switch ports)
+    // dev convenience: allow any localhost / loopback port (Vite may auto-switch ports)
     if (/^http:\/\/localhost:\d+$/.test(origin)) return cb(null, true);
+    if (/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) return cb(null, true);
 
     if (isPrivateLanHttpOrigin(origin)) return cb(null, true);
 
@@ -55,7 +56,7 @@ const corsMiddleware = cors({
 // Google Identity Services redirect POSTs include an Origin like https://accounts.google.com.
 // This is a top-level navigation, not an XHR, so CORS protection here only causes false 500s.
 app.use((req, res, next) => {
-  if (req.path === "/auth/google") return next();
+  if (req.path === "/auth/google" || req.path === "/auth/google/") return next();
   return corsMiddleware(req, res, next);
 });
 app.use(express.json({ limit: "1mb" }));
@@ -64,19 +65,21 @@ app.use(express.urlencoded({ extended: true }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+const authGoogleGetHint =
+  "이 주소는 구글 로그인 버튼이 POST로만 호출합니다. 주소창에 직접 열면 GET이라 이 메시지가 보입니다. 웹 앱(예: http://localhost:5176)에서 다시 로그인해 주세요.";
+
 app.get("/auth/google", (_req, res) => {
-  res
-    .type("text/plain; charset=utf-8")
-    .send(
-      "이 주소는 구글 로그인 버튼이 POST로만 호출합니다. 주소창에 직접 열면 GET이라 이 메시지가 보입니다. 웹 앱(예: http://localhost:5176)에서 다시 로그인해 주세요."
-    );
+  res.type("text/plain; charset=utf-8").send(authGoogleGetHint);
+});
+app.get("/auth/google/", (_req, res) => {
+  res.type("text/plain; charset=utf-8").send(authGoogleGetHint);
 });
 
 const googleCredentialSchema = z.object({
   credential: z.string().min(1)
 });
 
-app.post("/auth/google", async (req, res) => {
+async function handleGoogleRedirectPost(req: express.Request, res: express.Response) {
   const credential = typeof req.body?.credential === "string" ? req.body.credential : null;
   const payload = credential ? safeParseJwtPayload(credential) : null;
   const dbUser = await upsertUserFromGooglePayload(payload);
@@ -96,7 +99,10 @@ app.post("/auth/google", async (req, res) => {
   );
   const sessionQ = encodeURIComponent(token);
   return res.redirect(`${configuredWebOrigin}?gsi_user=${encoded}&auth_session=${sessionQ}`);
-});
+}
+
+app.post("/auth/google", handleGoogleRedirectPost);
+app.post("/auth/google/", handleGoogleRedirectPost);
 
 /** 팝업/원탭 등 클라이언트에서 credential만 받을 때 세션 발급 */
 app.post("/api/auth/session", async (req, res) => {
