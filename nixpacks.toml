@@ -1,0 +1,4 @@
+# Railway (Nixpacks) — 모노레포에서 corepack이 pnpm 11을 켜면 Prisma/esbuild postinstall이
+# ERR_PNPM_IGNORED_BUILDS 로 막힙니다. 레포의 packageManager(pnpm@9.12.3)와 맞춥니다.
+[variables]
+NIXPACKS_PNPM_VERSION = "9.12.3"
