@@ -2,9 +2,13 @@ import { Router } from "express";
 import { mergeTagoMetroFallback, tagoBusCityDisplayName } from "../tagoBusCityDisplay.js";
 import { env } from "../env.js";
 import {
+  enrichSeoulBusRouteTermini,
+  fetchSeoulBusRouteListWs,
+  fetchSeoulBusRouteListWsDetailed,
   fetchSeoulOpenBusStationsByRouteId,
   searchSeoulOpenDataBusRoutesByRouteNo,
-  type SeoulBusRouteRow
+  type SeoulBusRouteRow,
+  type SeoulWsBusRouteListDiag
 } from "../seoulOpenDataPlaza.js";
 
 const TAGO_BASE = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService";
@@ -187,6 +191,64 @@ function shouldUseSeoulOpenDataRoutes(cityCode: string): boolean {
   return /^11\d{3}$/.test(c);
 }
 
+function seoulBusRoutesWsOnly(): boolean {
+  const v = (env.SEOUL_BUS_ROUTES_WS_ONLY ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function seoulBusOpenDataOnly(): boolean {
+  const v = (env.SEOUL_BUS_OPEN_DATA_ONLY ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function seoulBusPlazaLight(): boolean {
+  const v = (env.SEOUL_BUS_ROUTES_PLAZA_LIGHT ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function isSeoulWsEnvDisabled(): boolean {
+  const v = (env.SEOUL_WS_BUS_DISABLED ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function wsRouteListRecoveryHint(diag: SeoulWsBusRouteListDiag): string {
+  switch (diag.reason) {
+    case "ok":
+      return "";
+    case "ws_disabled":
+      return "SEOUL_WS_BUS_DISABLED를 비우면 WS를 다시 호출합니다. 폴백을 쓰려면 SEOUL_BUS_ROUTES_WS_ONLY도 끄세요.";
+    case "missing_key_or_query":
+      return "SEOUL_BUS_WS_SERVICE_KEY 또는 SEOUL_OPEN_DATA_PLAZA_KEY를 확인하세요.";
+    case "timeout_or_network":
+      return "ws.bus.go.kr에 연결이 안 되거나 SEOUL_WS_FETCH_TIMEOUT_MS 안에 응답이 없습니다. 망·방화벽을 확인하거나, SEOUL_WS_BUS_DISABLED=1과 SEOUL_BUS_ROUTES_WS_ONLY 해제로 열린데이터+TAGO 폴백을 쓰세요.";
+    case "ws_api_error":
+      return `WS가 오류를 반환했습니다(headerCd=${diag.headerCd ?? "?"}). data.go.kr 버스위치정보(WS)용 serviceKey와 키 인코딩(Encoding/Decoding)을 확인하세요.`;
+    case "zero_items":
+      return "WS는 정상 응답처럼 보이는데 노선 레코드가 없습니다. 검색어를 바꿔 보거나, SEOUL_BUS_ROUTES_WS_ONLY를 끄면 열린데이터 시트·TAGO로 이어집니다.";
+    default:
+      return "";
+  }
+}
+
+function routesFromSeoulWsRows(wsList: SeoulBusRouteRow[], max: number): TagoRouteWithSearchCity[] {
+  const seen = new Set<string>();
+  const routes: TagoRouteWithSearchCity[] = [];
+  for (const s of wsList) {
+    if (!s.busRouteId || seen.has(s.busRouteId) || routes.length >= max) continue;
+    seen.add(s.busRouteId);
+    routes.push({
+      routeId: s.busRouteId,
+      routeNo: s.busRouteNm,
+      routeType: s.routeTypeLabel || s.routeTypeRaw,
+      startNode: s.stStationNm,
+      endNode: s.edStationNm,
+      cityCode: "11",
+      transitProvider: "seoul"
+    });
+  }
+  return routes;
+}
+
 /** 여러 cityCode로 조회해 첫 매칭을 모으며, 정류장 조회용 `cityCode`를 노선마다 붙입니다. */
 async function fetchRouteNoListAcrossCityCodes(
   cityCodes: string[],
@@ -265,6 +327,41 @@ function mergeSeoulOpenRoutesFirst(
   return out;
 }
 
+/** 열린데이터 마스터에 기·종점이 비어 있을 때 TAGO로 먼저 채워 `busRouteInfo` 시트 스캔을 줄임 */
+function fillSeoulTerminiFromTago(seoulRows: SeoulBusRouteRow[], tagoRows: TagoRouteWithSearchCity[]): void {
+  const byRouteId = new Map<string, TagoRouteWithSearchCity>();
+  for (const t of tagoRows) {
+    if (t.routeId && !byRouteId.has(t.routeId)) byRouteId.set(t.routeId, t);
+  }
+  const byRouteNo = new Map<string, TagoRouteWithSearchCity[]>();
+  for (const t of tagoRows) {
+    const k = t.routeNo.trim().toLowerCase();
+    if (!k) continue;
+    const arr = byRouteNo.get(k);
+    if (arr) arr.push(t);
+    else byRouteNo.set(k, [t]);
+  }
+  for (const s of seoulRows) {
+    const needSt = !s.stStationNm?.trim();
+    const needEd = !s.edStationNm?.trim();
+    if (!needSt && !needEd) continue;
+    const rid = s.busRouteId.trim();
+    const direct = rid ? byRouteId.get(rid) : undefined;
+    if (direct) {
+      if (needSt && direct.startNode?.trim()) s.stStationNm = direct.startNode;
+      if (needEd && direct.endNode?.trim()) s.edStationNm = direct.endNode;
+      continue;
+    }
+    const nm = s.busRouteNm.trim().toLowerCase();
+    const cands = nm ? (byRouteNo.get(nm) ?? []) : [];
+    const pick = cands.find((x) => x.routeId === rid) ?? cands[0];
+    if (pick) {
+      if (needSt && pick.startNode?.trim()) s.stStationNm = pick.startNode;
+      if (needEd && pick.endNode?.trim()) s.edStationNm = pick.endNode;
+    }
+  }
+}
+
 function parseCitiesFromTagoItems(items: Record<string, unknown>[]): TagoCityRow[] {
   const byCode = new Map<string, TagoCityRow>();
   for (const row of items) {
@@ -278,36 +375,98 @@ function parseCitiesFromTagoItems(items: Record<string, unknown>[]): TagoCityRow
   return mergeTagoMetroFallback([...byCode.values()]);
 }
 
-/** TAGO 시·군·구 목록은 자주 바뀌지 않아 짧게 캐시해 `/city-codes`·넓게 찾기 부하를 줄입니다. */
-const CITY_CODE_LIST_TTL_MS = 30 * 60 * 1000;
+/** TAGO 시·군·구 목록은 자주 바뀌지 않아 캐시해 `/city-codes`·넓게 찾기 부하를 줄입니다. */
+const CITY_CODE_LIST_TTL_MS = 45 * 60 * 1000;
 let cityCodeListCache: { expiresAt: number; rows: Record<string, unknown>[] } | null = null;
+let cityCodeListInflight: Promise<Record<string, unknown>[]> | null = null;
 
-/** `getCtyCodeList` 는 `totalCount` 초과분이 잘리므로 페이지를 이어 받습니다. */
+/** `getCtyCodeList` 는 `totalCount` 초과분이 잘리므로 페이지를 이어 받습니다. `totalCount`가 있으면 2페이지부터 병렬로 가져옵니다. */
 async function fetchAllCtyCodeListRows(): Promise<Record<string, unknown>[]> {
   const now = Date.now();
   if (cityCodeListCache && cityCodeListCache.expiresAt > now) {
     return cityCodeListCache.rows;
   }
+  if (!cityCodeListInflight) {
+    cityCodeListInflight = (async () => {
+      const PAGE = 500;
+      /** TAGO 동시 호출 상한 — 너무 크면 429·타임아웃 위험 */
+      const PARALLEL = 8;
+      const acc: Record<string, unknown>[] = [];
 
-  const PAGE = 500;
-  const acc: Record<string, unknown>[] = [];
-  let pageNo = 1;
-  for (;;) {
-    const { body, items } = await tagoGet("getCtyCodeList", {
-      numOfRows: String(PAGE),
-      pageNo: String(pageNo)
+      const finish = (rows: Record<string, unknown>[]) => {
+        cityCodeListCache = { expiresAt: Date.now() + CITY_CODE_LIST_TTL_MS, rows };
+        return rows;
+      };
+
+      const first = await tagoGet("getCtyCodeList", {
+        numOfRows: String(PAGE),
+        pageNo: "1"
+      });
+      acc.push(...first.items);
+      if (!first.items.length) {
+        return finish(acc);
+      }
+
+      const totalCount = readBodyInt(first.body, "totalcount", "totalCount");
+      if (first.items.length < PAGE || (totalCount > 0 && acc.length >= totalCount)) {
+        return finish(acc);
+      }
+
+      if (totalCount > 0) {
+        const lastPage = Math.min(250, Math.ceil(totalCount / PAGE));
+        let nextPage = 2;
+        while (nextPage <= lastPage) {
+          const batchEnd = Math.min(lastPage, nextPage + PARALLEL - 1);
+          const packs = await Promise.all(
+            Array.from({ length: batchEnd - nextPage + 1 }, (_, j) =>
+              tagoGet("getCtyCodeList", {
+                numOfRows: String(PAGE),
+                pageNo: String(nextPage + j)
+              })
+            )
+          );
+          let stop = false;
+          for (const { items } of packs) {
+            if (!items.length) {
+              stop = true;
+              break;
+            }
+            acc.push(...items);
+            if (acc.length >= totalCount) {
+              stop = true;
+              break;
+            }
+            if (items.length < PAGE) {
+              stop = true;
+              break;
+            }
+          }
+          if (stop) break;
+          nextPage = batchEnd + 1;
+        }
+        return finish(acc);
+      }
+
+      let pageNo = 2;
+      for (;;) {
+        const { body, items } = await tagoGet("getCtyCodeList", {
+          numOfRows: String(PAGE),
+          pageNo: String(pageNo)
+        });
+        if (!items.length) break;
+        acc.push(...items);
+        const tc = readBodyInt(body, "totalcount", "totalCount");
+        if (tc > 0 && acc.length >= tc) break;
+        if (items.length < PAGE) break;
+        pageNo += 1;
+        if (pageNo > 250) break;
+      }
+      return finish(acc);
+    })().finally(() => {
+      cityCodeListInflight = null;
     });
-    acc.push(...items);
-    const totalCount = readBodyInt(body, "totalcount", "totalCount");
-    if (!items.length) break;
-    if (totalCount > 0 && acc.length >= totalCount) break;
-    if (items.length < PAGE) break;
-    pageNo += 1;
-    if (pageNo > 250) break;
   }
-
-  cityCodeListCache = { expiresAt: now + CITY_CODE_LIST_TTL_MS, rows: acc };
-  return acc;
+  return cityCodeListInflight;
 }
 
 function mapRouteRows(items: Record<string, unknown>[]): TagoRouteRow[] {
@@ -363,6 +522,12 @@ tagoTransitRouter.get("/city-codes", async (_req, res) => {
     const status = (e as Error & { status?: number }).status ?? 500;
     const message = e instanceof Error ? e.message : String(e);
     if (message === "TAGO_SERVICE_KEY_MISSING") {
+      const plaza = seoulOpenDataPlazaKey();
+      const seoulWs = (env.SEOUL_BUS_WS_SERVICE_KEY ?? "").trim();
+      /** TAGO 없이 서울만(열린데이터·WS) 쓰는 경우에도 UI에서 cityCode `11` 을 고를 수 있게 */
+      if (plaza || seoulWs) {
+        return res.json({ cities: [{ cityCode: "11", cityName: "서울특별시" }] });
+      }
       return res.status(503).json({ error: missingTagoServiceKeyHint() });
     }
     return res.status(status).json({ error: message });
@@ -378,11 +543,185 @@ tagoTransitRouter.get("/routes", async (req, res) => {
   try {
     const trials = routeSearchCityCodes(cityCode);
     const openPlaza = seoulOpenDataPlazaKey();
-    const useSeoulOpen = shouldUseSeoulOpenDataRoutes(cityCode) && !!openPlaza;
+    const seoulWsKeyOnly = (env.SEOUL_BUS_WS_SERVICE_KEY ?? "").trim();
+    /** 열린데이터 시트 없이 `ws.bus.go.kr` 키(data.go.kr 노선정보조회)만 있어도 서울에서 WS 우선 검색 가능 */
+    const useSeoulOpen =
+      shouldUseSeoulOpenDataRoutes(cityCode) && (!!openPlaza || !!seoulWsKeyOnly);
     const tagoKey = (env.TAGO_SERVICE_KEY ?? "").trim().replace(/^["']|["']$/g, "");
 
     if (!useSeoulOpen && !tagoKey) {
       return res.status(503).json({ error: missingTagoServiceKeyHint() });
+    }
+
+    /** 서울만 PLAZA 경량(또는 PLAZA 없을 때 TAGO만) — WS·병합·enrich 경로 진입 안 함 */
+    if (seoulBusPlazaLight() && shouldUseSeoulOpenDataRoutes(cityCode)) {
+      if (openPlaza) {
+        let seoulRowsLight: SeoulBusRouteRow[] = [];
+        try {
+          seoulRowsLight = await searchSeoulOpenDataBusRoutesByRouteNo(openPlaza, routeNo, {
+            maxPages: 18,
+            maxRoutes: 100,
+            enrichTermini: false
+          });
+        } catch {
+          seoulRowsLight = [];
+        }
+        try {
+          await enrichSeoulBusRouteTermini(openPlaza, seoulRowsLight, {
+            enrichMaxRoutes: 40,
+            maxPagesPerRoute: 72,
+            waveSize: 4
+          });
+        } catch {
+          void 0;
+        }
+        return res.json({ routes: mergeSeoulOpenRoutesFirst(seoulRowsLight, [], 100) });
+      }
+      if (tagoKey) {
+        try {
+          const tr = await fetchRouteNoListAcrossCityCodes(trials, routeNo, { parallel: 8, maxRoutes: 100 });
+          return res.json({ routes: tr });
+        } catch {
+          return res.json({ routes: [] });
+        }
+      }
+      return res.status(503).json({
+        error:
+          "SEOUL_BUS_ROUTES_PLAZA_LIGHT=1 인데 서울 검색에 SEOUL_OPEN_DATA_PLAZA_KEY 또는 TAGO_SERVICE_KEY가 필요합니다."
+      });
+    }
+
+    if (useSeoulOpen) {
+      // 열린데이터광장만 강제: WS/TAGO/enrich 전부 스킵 (가장 빠름)
+      if (seoulBusOpenDataOnly()) {
+        if (!openPlaza) {
+          return res.status(503).json({
+            error: "SEOUL_BUS_OPEN_DATA_ONLY=1 인데 SEOUL_OPEN_DATA_PLAZA_KEY가 비어 있습니다."
+          });
+        }
+        let seoulRowsOnly: SeoulBusRouteRow[] = [];
+        try {
+          seoulRowsOnly = await searchSeoulOpenDataBusRoutesByRouteNo(openPlaza, routeNo, {
+            maxPages: 18,
+            maxRoutes: 100,
+            enrichTermini: false
+          });
+        } catch {
+          seoulRowsOnly = [];
+        }
+        try {
+          await enrichSeoulBusRouteTermini(openPlaza, seoulRowsOnly, {
+            enrichMaxRoutes: 40,
+            maxPagesPerRoute: 72,
+            waveSize: 4
+          });
+        } catch {
+          void 0;
+        }
+        return res.json({ routes: mergeSeoulOpenRoutesFirst(seoulRowsOnly, [], 100) });
+      }
+
+      if (seoulBusRoutesWsOnly()) {
+        const wsKeyOnly = (env.SEOUL_BUS_WS_SERVICE_KEY ?? "").trim();
+        if (!wsKeyOnly || isSeoulWsEnvDisabled()) {
+          return res.status(503).json({
+            error:
+              "서울 노선 WS 전용 모드(SEOUL_BUS_ROUTES_WS_ONLY)인데 WS 키가 없거나 SEOUL_WS_BUS_DISABLED로 WS가 꺼져 있습니다."
+          });
+        }
+        try {
+          const diagOnly = await fetchSeoulBusRouteListWsDetailed(wsKeyOnly, routeNo);
+          const routesOnly = routesFromSeoulWsRows(diagOnly.rows, 100);
+          if (routesOnly.length === 0) {
+            return res.json({
+              routes: routesOnly,
+              wsSearch: {
+                reason: diagOnly.reason,
+                headerCd: diagOnly.headerCd,
+                headerMsg: diagOnly.headerMsg,
+                hint: wsRouteListRecoveryHint(diagOnly)
+              }
+            });
+          }
+          return res.json({ routes: routesOnly });
+        } catch {
+          const diagCatch: SeoulWsBusRouteListDiag = {
+            rows: [],
+            reason: "timeout_or_network",
+            headerCd: null,
+            headerMsg: null
+          };
+          return res.json({
+            routes: [],
+            wsSearch: {
+              reason: diagCatch.reason,
+              headerCd: diagCatch.headerCd,
+              headerMsg: diagCatch.headerMsg,
+              hint: wsRouteListRecoveryHint(diagCatch)
+            }
+          });
+        }
+      }
+
+      const wsKey = (env.SEOUL_BUS_WS_SERVICE_KEY ?? "").trim();
+      if (wsKey) {
+        try {
+          const wsList = await fetchSeoulBusRouteListWs(wsKey, routeNo);
+          if (wsList.length > 0) {
+            return res.json({ routes: routesFromSeoulWsRows(wsList, 100) });
+          }
+        } catch {
+          void 0;
+        }
+      }
+
+      let tagoRoutes: TagoRouteWithSearchCity[] = [];
+      let seoulRows: SeoulBusRouteRow[] = [];
+
+      if (tagoKey) {
+        try {
+          const [t, s] = await Promise.all([
+            fetchRouteNoListAcrossCityCodes(trials, routeNo, { parallel: 8, maxRoutes: 100 }).catch(() => []),
+            openPlaza
+              ? searchSeoulOpenDataBusRoutesByRouteNo(openPlaza, routeNo, {
+                  maxPages: 40,
+                  maxRoutes: 100,
+                  enrichTermini: false
+                }).catch(() => [])
+              : Promise.resolve([] as SeoulBusRouteRow[])
+          ]);
+          tagoRoutes = t;
+          seoulRows = s;
+        } catch {
+          tagoRoutes = [];
+          seoulRows = [];
+        }
+        fillSeoulTerminiFromTago(seoulRows, tagoRoutes);
+        if (openPlaza) {
+          try {
+            await enrichSeoulBusRouteTermini(openPlaza, seoulRows, {
+              deepRoutes: 6,
+              maxPagesPerRoute: 40,
+              waveSize: 8
+            });
+          } catch {
+            void 0;
+          }
+        }
+        return res.json({ routes: mergeSeoulOpenRoutesFirst(seoulRows, tagoRoutes, 100) });
+      }
+
+      try {
+        seoulRows = openPlaza
+          ? await searchSeoulOpenDataBusRoutesByRouteNo(openPlaza, routeNo, {
+              maxPages: 40,
+              maxRoutes: 100
+            })
+          : [];
+      } catch {
+        seoulRows = [];
+      }
+      return res.json({ routes: mergeSeoulOpenRoutesFirst(seoulRows, [], 100) });
     }
 
     let tagoRoutes: TagoRouteWithSearchCity[] = [];
@@ -392,19 +731,6 @@ tagoTransitRouter.get("/routes", async (req, res) => {
       } catch {
         tagoRoutes = [];
       }
-    }
-
-    if (useSeoulOpen) {
-      let seoulRows: SeoulBusRouteRow[] = [];
-      try {
-        seoulRows = await searchSeoulOpenDataBusRoutesByRouteNo(openPlaza, routeNo, {
-          maxPages: 40,
-          maxRoutes: 100
-        });
-      } catch {
-        seoulRows = [];
-      }
-      return res.json({ routes: mergeSeoulOpenRoutesFirst(seoulRows, tagoRoutes, 100) });
     }
 
     return res.json({ routes: tagoRoutes });
@@ -433,6 +759,106 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
   const MAX_ROUTES = 80;
 
   try {
+    if (seoulBusRoutesWsOnly()) {
+      const openPlazaWsOnly = seoulOpenDataPlazaKey();
+      const wsKeyBroadOnly = (env.SEOUL_BUS_WS_SERVICE_KEY ?? "").trim();
+      if (!wsKeyBroadOnly || isSeoulWsEnvDisabled()) {
+        return res.status(503).json({
+          error:
+            "서울 노선 WS 전용 모드(SEOUL_BUS_ROUTES_WS_ONLY)인데 WS 키가 없거나 SEOUL_WS_BUS_DISABLED로 WS가 꺼져 있습니다."
+        });
+      }
+      try {
+        const diagBroad = await fetchSeoulBusRouteListWsDetailed(wsKeyBroadOnly, routeNo);
+        const seoulMetroLabelOnly = "서울특별시";
+        const routesWsOnly = diagBroad.rows
+          .filter((s) => s.busRouteId)
+          .slice(0, MAX_ROUTES)
+          .map((s) => ({
+            routeId: s.busRouteId,
+            routeNo: s.busRouteNm,
+            routeType: s.routeTypeLabel || s.routeTypeRaw || "",
+            startNode: s.stStationNm,
+            endNode: s.edStationNm,
+            cityCode: "11",
+            cityName: seoulMetroLabelOnly,
+            transitProvider: "seoul" as const
+          }));
+        if (routesWsOnly.length === 0) {
+          return res.json({
+            routes: routesWsOnly,
+            wsSearch: {
+              reason: diagBroad.reason,
+              headerCd: diagBroad.headerCd,
+              headerMsg: diagBroad.headerMsg,
+              hint: wsRouteListRecoveryHint(diagBroad)
+            }
+          });
+        }
+        return res.json({ routes: routesWsOnly });
+      } catch {
+        const diagCatch: SeoulWsBusRouteListDiag = {
+          rows: [],
+          reason: "timeout_or_network",
+          headerCd: null,
+          headerMsg: null
+        };
+        return res.json({
+          routes: [],
+          wsSearch: {
+            reason: diagCatch.reason,
+            headerCd: diagCatch.headerCd,
+            headerMsg: diagCatch.headerMsg,
+            hint: wsRouteListRecoveryHint(diagCatch)
+          }
+        });
+      }
+    }
+
+    if (seoulBusOpenDataOnly()) {
+      const openPlazaBroadOnly = seoulOpenDataPlazaKey();
+      if (!openPlazaBroadOnly) {
+        return res.status(503).json({
+          error: "SEOUL_BUS_OPEN_DATA_ONLY=1 인데 SEOUL_OPEN_DATA_PLAZA_KEY가 비어 있습니다."
+        });
+      }
+      let seoulOpenSpineOnly: SeoulBusRouteRow[] = [];
+      try {
+        seoulOpenSpineOnly = await searchSeoulOpenDataBusRoutesByRouteNo(openPlazaBroadOnly, routeNo, {
+          maxPages: 18,
+          maxRoutes: MAX_ROUTES,
+          enrichTermini: false
+        });
+      } catch {
+        seoulOpenSpineOnly = [];
+      }
+      try {
+        await enrichSeoulBusRouteTermini(openPlazaBroadOnly, seoulOpenSpineOnly, {
+          enrichMaxRoutes: 48,
+          maxPagesPerRoute: 72,
+          waveSize: 4
+        });
+      } catch {
+        void 0;
+      }
+      const seoulMetroLabelOnly = "서울특별시";
+      return res.json({
+        routes: seoulOpenSpineOnly
+          .filter((s) => s.busRouteId)
+          .slice(0, MAX_ROUTES)
+          .map((s) => ({
+            routeId: s.busRouteId,
+            routeNo: s.busRouteNm,
+            routeType: s.routeTypeLabel || s.routeTypeRaw || "",
+            startNode: s.stStationNm,
+            endNode: s.edStationNm,
+            cityCode: "11",
+            cityName: seoulMetroLabelOnly,
+            transitProvider: "seoul" as const
+          }))
+      });
+    }
+
     const rows = await fetchAllCtyCodeListRows();
     const allCities = parseCitiesFromTagoItems(rows);
     const cities = allCities.slice(0, maxCities);
@@ -450,14 +876,46 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
 
     const openPlazaBroad = seoulOpenDataPlazaKey();
     let seoulOpenSpine: SeoulBusRouteRow[] = [];
-    if (openPlazaBroad) {
+    if (seoulBusPlazaLight() && openPlazaBroad) {
       try {
         seoulOpenSpine = await searchSeoulOpenDataBusRoutesByRouteNo(openPlazaBroad, routeNo, {
-          maxPages: 45,
-          maxRoutes: MAX_ROUTES
+          maxPages: 18,
+          maxRoutes: MAX_ROUTES,
+          enrichTermini: false
         });
       } catch {
         seoulOpenSpine = [];
+      }
+    } else {
+      const wsKeyBroad = (env.SEOUL_BUS_WS_SERVICE_KEY ?? "").trim();
+      if (wsKeyBroad) {
+        try {
+          const ws = await fetchSeoulBusRouteListWs(wsKeyBroad, routeNo);
+          if (ws.length) seoulOpenSpine = ws.slice(0, MAX_ROUTES);
+        } catch {
+          seoulOpenSpine = [];
+        }
+      }
+      if (!seoulOpenSpine.length && openPlazaBroad) {
+        try {
+          seoulOpenSpine = await searchSeoulOpenDataBusRoutesByRouteNo(openPlazaBroad, routeNo, {
+            maxPages: 45,
+            maxRoutes: MAX_ROUTES
+          });
+        } catch {
+          seoulOpenSpine = [];
+        }
+      }
+    }
+    if (seoulBusPlazaLight() && openPlazaBroad && seoulOpenSpine.length) {
+      try {
+        await enrichSeoulBusRouteTermini(openPlazaBroad, seoulOpenSpine, {
+          enrichMaxRoutes: 48,
+          maxPagesPerRoute: 72,
+          waveSize: 4
+        });
+      } catch {
+        void 0;
       }
     }
     const openRouteIds = new Set(seoulOpenSpine.map((s) => s.busRouteId).filter(Boolean));
