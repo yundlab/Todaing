@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@9.12.3",
   "pnpm": {
-    "onlyBuiltDependencies": ["@prisma/client", "prisma"]
+    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "prisma"]
   },
   "engines": {
     "node": ">=20.11.0"
