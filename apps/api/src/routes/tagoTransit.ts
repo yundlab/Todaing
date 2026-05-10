@@ -566,11 +566,13 @@ tagoTransitRouter.get("/routes", async (req, res) => {
         } catch {
           seoulRowsLight = [];
         }
+        // PLAZA_LIGHT는 "가볍게 빨리"가 목적이라, 기·종점 보강(enrich)은 소량만 수행합니다.
+        // (대량 enrich는 노선당 시트 페이징을 유발해 체감이 급격히 느려짐)
         try {
           await enrichSeoulBusRouteTermini(openPlaza, seoulRowsLight, {
-            enrichMaxRoutes: 40,
-            maxPagesPerRoute: 72,
-            waveSize: 4
+            enrichMaxRoutes: 10,
+            maxPagesPerRoute: 10,
+            waveSize: 3
           });
         } catch {
           void 0;
@@ -609,11 +611,13 @@ tagoTransitRouter.get("/routes", async (req, res) => {
         } catch {
           seoulRowsOnly = [];
         }
+        // OPEN_DATA_ONLY는 WS/TAGO를 건너뛰는 대신 호출 횟수를 최소화하는 모드라,
+        // enrich는 아주 제한적으로만 수행합니다.
         try {
           await enrichSeoulBusRouteTermini(openPlaza, seoulRowsOnly, {
-            enrichMaxRoutes: 40,
-            maxPagesPerRoute: 72,
-            waveSize: 4
+            enrichMaxRoutes: 10,
+            maxPagesPerRoute: 10,
+            waveSize: 3
           });
         } catch {
           void 0;
@@ -834,9 +838,9 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
       }
       try {
         await enrichSeoulBusRouteTermini(openPlazaBroadOnly, seoulOpenSpineOnly, {
-          enrichMaxRoutes: 48,
-          maxPagesPerRoute: 72,
-          waveSize: 4
+          enrichMaxRoutes: 10,
+          maxPagesPerRoute: 10,
+          waveSize: 3
         });
       } catch {
         void 0;
@@ -910,9 +914,9 @@ tagoTransitRouter.get("/routes-broad", async (req, res) => {
     if (seoulBusPlazaLight() && openPlazaBroad && seoulOpenSpine.length) {
       try {
         await enrichSeoulBusRouteTermini(openPlazaBroad, seoulOpenSpine, {
-          enrichMaxRoutes: 48,
-          maxPagesPerRoute: 72,
-          waveSize: 4
+          enrichMaxRoutes: 10,
+          maxPagesPerRoute: 10,
+          waveSize: 3
         });
       } catch {
         void 0;
