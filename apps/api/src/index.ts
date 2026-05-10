@@ -33,14 +33,18 @@ function isPrivateLanHttpOrigin(origin: string): boolean {
 
 const configuredWebOrigin = env.WEB_ORIGIN.replace(/\/$/, "");
 
+function originsMatch(a: string, b: string): boolean {
+  return a.replace(/\/$/, "") === b.replace(/\/$/, "");
+}
+
 app.use(helmet());
 const corsMiddleware = cors({
   origin: (origin, cb) => {
     // same-origin / curl / server-to-server
     if (!origin) return cb(null, true);
 
-    // allow explicit configured origin
-    if (origin === env.WEB_ORIGIN) return cb(null, true);
+    // allow explicit configured origin (with or without trailing slash)
+    if (originsMatch(origin, env.WEB_ORIGIN)) return cb(null, true);
 
     // dev convenience: allow any localhost / loopback port (Vite may auto-switch ports)
     if (/^http:\/\/localhost:\d+$/.test(origin)) return cb(null, true);
