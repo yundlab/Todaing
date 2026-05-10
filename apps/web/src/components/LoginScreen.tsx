@@ -103,7 +103,9 @@ export default function LoginScreen({
 
         // StrictMode + 의존성 문제로 initialize()가 중복 호출되면 팝업/리다이렉트가 두 번 뜰 수 있음
         if (!window.__gsiInitialized) {
-          const loginUri = `${config.apiBaseUrl.replace(/\/$/, "")}/auth/google`;
+          /** 상대 API 베이스(`""`)일 때 구글 `login_uri`는 절대 URL이어야 함 */
+          const apiOrigin = config.apiBaseUrl.replace(/\/$/, "") || window.location.origin;
+          const loginUri = `${apiOrigin}/auth/google`;
           accountsId.initialize({
             client_id: clientId,
             // 단일 탭 흐름 강제 — 빈 탭 + 로그인 탭으로 갈라지는 것을 방지
@@ -121,7 +123,7 @@ export default function LoginScreen({
                 if (resp?.credential) {
                   try {
                     const r = await fetch(
-                      `${config.apiBaseUrl.replace(/\/$/, "")}/api/auth/session`,
+                      `${apiOrigin}/api/auth/session`,
                       {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },

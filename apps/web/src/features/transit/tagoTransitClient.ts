@@ -29,7 +29,10 @@ export async function fetchTagoCityCodes(): Promise<TagoCity[]> {
 
 export async function searchTagoRoutes(cityCode: string, routeNo: string): Promise<TagoRouteSummary[]> {
   const q = new URLSearchParams({ cityCode, routeNo });
-  const data = await http<{ routes: TagoRouteSummary[] }>(`/api/transit/tago/routes?${q.toString()}`);
+  /** 서울은 TAGO+열린데이터 병렬·기종점 보강으로 15초 기본값을 넘기기 쉬움 */
+  const data = await http<{ routes: TagoRouteSummary[] }>(`/api/transit/tago/routes?${q.toString()}`, {
+    timeoutMs: 90_000
+  });
   return data.routes ?? [];
 }
 
