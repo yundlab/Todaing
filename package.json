@@ -1,5 +1,5 @@
 {
-  "name": "gagye-bbu",
+  "name": "todaing",
   "private": true,
   "packageManager": "pnpm@9.12.3",
   "pnpm": {
@@ -12,7 +12,7 @@
     "dev": "corepack pnpm -r --parallel dev",
     "build": "corepack pnpm -r build",
     "lint": "corepack pnpm -r lint",
-    "knip": "corepack pnpm --filter @gagye-bbu/web knip && corepack pnpm --filter @gagye-bbu/api knip",
+    "knip": "corepack pnpm --filter @todaing/web knip && corepack pnpm --filter @todaing/api knip",
     "typecheck": "corepack pnpm -r typecheck",
     "build:stations": "node scripts/build-capital-metro-stations.mjs"
   }

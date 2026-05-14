@@ -1,10 +1,7 @@
 {
-  "name": "@gagye-bbu/api",
+  "name": "@todaing/api",
   "private": true,
   "type": "module",
-  "pnpm": {
-    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "esbuild", "prisma"]
-  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",

@@ -13,17 +13,20 @@
 - 지출 작성 시 **교통(지하철·버스)** 입력을 지원하며, 버스 정류장·노선 검색은 **국토부 TAGO**와 **서울 열린데이터광장** 등을 API에서 프록시합니다.
 - **PWA**로 설치해 두고 쓸 수 있도록 구성했습니다.
 
-워크스페이스 이름은 `gagye-bbu`이며, 패키지는 `@gagye-bbu/web`(프론트) / `@gagye-bbu/api`(백엔드)로 나뉩니다.
+워크스페이스 루트 패키지 이름은 **`todaing`**(npm 규칙상 소문자)이며, 패키지는 **`@todaing/web`**(프론트) / **`@todaing/api`**(백엔드)로 나뉩니다. 제품명은 **Todaing**으로 부릅니다.
 
 ---
 
 ## 문제 정의 (왜 만들었나)
 
-- 이동 중에도 **빠르게 지출을 남기고**, 나중에 **날짜·카테고리·결제 수단**으로 다시 보고 싶다.
-- **달력·기념일(연간 반복)** 과 지출이 겹칠 때, 한 화면에서 맥락을 잡고 싶다.
-- 교통비는 **역·노선·버스 번호**를 손으로 치기보다, **검색으로 고르고** 저장하고 싶다.
+하루를 정리할 때 **지출만** 보거나 **일정만** 따로 보는 앱은 많지만, 실제로는 서로 겹쳐서 기억해야 할 일이 많습니다. Todaing은 아래 같은 상황을 전제로 문제를 정의했습니다.
 
-👉 Todaing은 **입력 경로를 짧게** 하고, **서버에 안전하게 모아** 두는 데 초점을 맞췄습니다.
+- **오늘 하루를 돌아볼 때** — 당일 지출과 일정을 **한눈에** 묶어서 보고 싶다. (언제, 무엇에, 어떤 맥락으로 돈을 썼는지와 그날의 약속·이벤트를 같이)
+- **미리 스케줄을 확인할 때** — 달력·월 단위로 **앞으로의 일정**을 빠르게 훑고, 그날 지출 흐름과 겹치지 않게 준비하고 싶다.
+- **일정·기념일 관리** — 반복 일정·**기념일(연간 반복)** 을 잊지 않고, 달력에 올려 두고 같이 관리하고 싶다.
+- **이동 경로를 남기고 싶을 때** — “그날 **어떤 루트**로 이동했는지”를 지출·일정과 같은 타임라인에 **기록**해 두고 나중에 다시 보고 싶다. (지하철·버스 등 교통 입력)
+
+👉 Todaing은 **입력 경로를 짧게** 하고, **일정·지출·교통**을 한곳에 모아 **하루 단위로 되돌아보기 쉽게** 만드는 데 초점을 맞췄습니다.
 
 ---
 
@@ -94,7 +97,7 @@
 ```text
 Todaing/
 ├── apps/
-│   ├── web/                 # @gagye-bbu/web — React + Vite PWA
+│   ├── web/                 # @todaing/web — React + Vite PWA
 │   │   └── src/
 │   │       ├── app/         # 라우터 등 앱 엔트리
 │   │       ├── routes/      # 페이지: Main, Today, Month, Calendar, Settings
@@ -103,7 +106,7 @@ Todaing/
 │   │       ├── domain/      # 날짜·정산·교통 페이로드 등 순수 로직
 │   │       ├── features/    # expenses·schedules API + transit 클라이언트
 │   │       └── lib/         # http, config, auth
-│   └── api/                 # @gagye-bbu/api — Express
+│   └── api/                 # @todaing/api — Express
 │       ├── prisma/          # schema, migrations
 │       └── src/
 │           ├── routes/      # expenses, schedules, tagoTransit
@@ -148,7 +151,7 @@ Todaing/
    TAGO·서울 키는 **API 서버 환경 변수**에만 두고, 브라우저에 노출하지 않습니다.
 
 3. **Prisma**  
-   스키마 변경 후 `pnpm -C apps/api prisma:migrate`로 마이그레이션합니다.
+   스키마 변경 후 `corepack pnpm --filter @todaing/api prisma:migrate`로 마이그레이션합니다.
 
 ---
 
@@ -192,7 +195,7 @@ cp apps/web/.env.example apps/web/.env
 ### 3) DB 마이그레이션 (최초 1회)
 
 ```bash
-corepack pnpm --filter @gagye-bbu/api prisma:migrate
+corepack pnpm --filter @todaing/api prisma:migrate
 ```
 
 ### 4) 개발 서버 (웹 + API 동시)
@@ -217,7 +220,7 @@ corepack pnpm dev
 | `corepack pnpm knip` | 미사용 코드 검사 |
 | `corepack pnpm build:stations` | 수도권 전철 역 데이터 생성 스크립트 |
 
-개별 패키지는 예: `corepack pnpm --filter @gagye-bbu/api build`
+개별 패키지는 예: `corepack pnpm --filter @todaing/api build`
 
 ---
 
@@ -226,6 +229,7 @@ corepack pnpm dev
 - **웹**: Vercel 등 정적 호스팅 — `VITE_API_BASE_URL`에 공개 API URL (`https://...`)  
 - **API**: Railway 등 — `WEB_ORIGIN`을 **실제 웹 origin**과 동일하게 (CORS)  
 - **pnpm 11 / Prisma 빌드 스크립트 이슈**가 있으면 루트 `nixpacks.toml`의 `NIXPACKS_PNPM_VERSION` 또는 호스트 문서를 참고해 pnpm 9.x로 맞춥니다.
+- Railway 등에서 **`pnpm --filter @gagye-bbu/...`** 를 쓰고 있었다면 **`@todaing/api`** 로 바꿔 주세요.
 
 ---
 
