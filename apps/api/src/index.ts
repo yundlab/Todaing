@@ -86,7 +86,14 @@ const googleCredentialSchema = z.object({
 async function handleGoogleRedirectPost(req: express.Request, res: express.Response) {
   const credential = typeof req.body?.credential === "string" ? req.body.credential : null;
   const payload = credential ? safeParseJwtPayload(credential) : null;
-  const dbUser = await upsertUserFromGooglePayload(payload);
+
+  let dbUser: Awaited<ReturnType<typeof upsertUserFromGooglePayload>> = null;
+  try {
+    dbUser = await upsertUserFromGooglePayload(payload);
+  } catch (err) {
+    console.error("[auth/google] user upsert failed", err);
+    return res.redirect(`${configuredWebOrigin}?authError=server_error`);
+  }
   if (!dbUser) {
     return res.redirect(`${configuredWebOrigin}?authError=google_credential_missing`);
   }
@@ -116,7 +123,14 @@ app.post("/api/auth/session", async (req, res) => {
     return;
   }
   const payload = safeParseJwtPayload(parsed.data.credential);
-  const dbUser = await upsertUserFromGooglePayload(payload);
+  let dbUser: Awaited<ReturnType<typeof upsertUserFromGooglePayload>> = null;
+  try {
+    dbUser = await upsertUserFromGooglePayload(payload);
+  } catch (err) {
+    console.error("[api/auth/session] user upsert failed", err);
+    res.status(503).json({ error: "server_error" });
+    return;
+  }
   if (!dbUser) {
     res.status(400).json({ error: "invalid_credential" });
     return;
@@ -142,7 +156,14 @@ app.get("/api/me", requireAuth, async (req, res) => {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const u = await prisma.user.findUnique({ where: { id } });
+  let u;
+  try {
+    u = await prisma.user.findUnique({ where: { id } });
+  } catch (err) {
+    console.error("[api/me] db query failed", err);
+    res.status(503).json({ error: "server_error" });
+    return;
+  }
   if (!u) {
     res.status(401).json({ error: "user_not_found" });
     return;
@@ -153,6 +174,21 @@ app.get("/api/me", requireAuth, async (req, res) => {
 app.use("/api/expenses", requireAuth, expensesRouter);
 app.use("/api/schedules", requireAuth, schedulesRouter);
 app.use("/api/transit/tago", tagoTransitRouter);
+
+// Last-resort error handler: any thrown/rejected request returns 500 instead of crashing.
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[unhandled request error]", err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: "server_error" });
+});
+
+// Never let a stray rejection/exception kill the whole API process.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
 
 const listenHost = "0.0.0.0";
 app.listen(env.PORT, listenHost, () => {
