@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: todaing-api
+    runtime: node
+    region: singapore
+    plan: free
+    branch: main
+    rootDir: .
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @todaing/api build
+    startCommand: pnpm --filter @todaing/api start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false
+      - key: AUTH_SESSION_SECRET
+        generateValue: true
+      - key: TAGO_SERVICE_KEY
+        sync: false
+      - key: SEOUL_OPEN_DATA_PLAZA_KEY
+        sync: false
+      - key: SEOUL_BUS_WS_SERVICE_KEY
+        sync: false
